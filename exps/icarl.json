@@ -9,7 +9,7 @@
     "increment": 10,
     "model_name": "icarl",
     "convnet_type": "resnet32",
-    "device": ["0","1","2","3"],
+    "device": ["1"],
     "seed": [1993]
 }
 

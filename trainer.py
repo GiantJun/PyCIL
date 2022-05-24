@@ -6,7 +6,7 @@ from utils import factory
 from utils.data_manager import DataManager
 from utils.toolkit import count_parameters
 import os
-
+import datetime
 
 def train(args):
     seed_list = copy.deepcopy(args['seed'])
@@ -20,11 +20,12 @@ def train(args):
 
 def _train(args):
     try:
-        os.mkdir("logs/{}".format(args['model_name']))
+        os.makedirs("logs/{}".format(args['model_name']))
     except:
         pass
-    logfilename = 'logs/{}/{}_{}_{}_{}_{}_{}_{}'.format(args['model_name'], args['prefix'], args['seed'], args['model_name'], args['convnet_type'],
-                                                args['dataset'], args['init_cls'], args['increment'])
+    nowTime = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+    logfilename = 'logs/{}/{}_{}_{}_{}_{}_{}_{}_{}'.format(args['model_name'], args['prefix'], args['seed'], args['model_name'], args['convnet_type'],
+                                                args['dataset'], args['init_cls'], args['increment'], nowTime)
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s [%(filename)s] => %(message)s',
