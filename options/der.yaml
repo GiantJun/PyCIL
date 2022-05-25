@@ -8,7 +8,7 @@ basic:
     # Dataset Choises: cifar100, cifar100, imagenet100, imagenet1000, tinyimagenet,
     # skin7, sd198(also known as skin40), mymedmnist
     dataset: cifar100
-    shuffle: false
+    shuffle: true
 
     # Method Choises: icarl, end2end, dr, ucir, bic, lwm, podnet, mas, joint， finetune
     method: der
@@ -18,7 +18,7 @@ basic:
     # Backbone Choises: resnet18, resnet18_cbam, cosine_resnet18, 
     # resnet32, cosine_resnet32, resnet34, cosine_resnet34, resnet50
     backbone: resnet32
-    pretrained: true
+    pretrained: false
     save_models: false # if true, programm will save model's weights during incremental train
 
     ######### Exampler Hyperparameters #########

@@ -30,10 +30,10 @@ class BaseLearner(object):
 
         self._epochs = args['epochs']
         self._lrate = args['lrate']
-        self._milestones = args['milestones']
-        self._lrate_decay = args['lrate_decay']
+        self._milestones = args['milestones'] if 'milestones' in args else None
+        self._lrate_decay = args['lrate_decay'] if 'lrate_decay' in args else None
         self._batch_size = args['batch_size']
-        self._weight_decay = args['weight_decay']
+        self._weight_decay = args['weight_decay'] if 'weight_decay' in args else None
         self._num_workers = args['num_workers']
 
     @property

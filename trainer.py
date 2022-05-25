@@ -20,7 +20,7 @@ def train(args):
 
 def _train(args):
     try:
-        os.makedirs("logs/{}".format(args['model_name']))
+        os.makedirs("logs/{}".format(args['method']))
     except:
         pass
     nowTime = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')

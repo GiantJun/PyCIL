@@ -1,7 +1,7 @@
 ######### Basic Settings #########
 basic:
     prefix: reproduce
-    device: ['3']
+    device: ['0']
     seed: [1993] # icarl 官方代码给的种子是 1993
     num_workers: 4
 
@@ -11,7 +11,7 @@ basic:
     shuffle: true
 
     # Method Choises: icarl, end2end, dr, ucir, bic, lwm, podnet, mas, joint， finetune
-    method: icarl
+    method: ewc
     # eval_metric Choises: acc, recall
     eval_metric: acc
 
@@ -34,8 +34,10 @@ basic:
 
 ######### Method's Hyperparameters #########
 special:
-    incre_type: cil
+    incre_type: til
     T: 2
+    lamda: 1000
+    fishermax: 0.0001
 
 ######### Experiment Settings for Datasets #########
 options:
@@ -48,11 +50,10 @@ options:
             init_lr_decay: 0.1
             init_weight_decay: 0.0005
 
-            epochs: 170
+            epochs: 180
             lrate: 0.1
-            milestones: [80, 120]
+            milestones: [70, 120,150]
             lrate_decay: 0.1
             batch_size: 128
             weight_decay: 0.0002
-            num_workers: 8
             

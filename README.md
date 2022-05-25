@@ -146,7 +146,7 @@ We thank the following repos providing helpful components/functions in our work.
 - [Coil](https://github.com/zhoudw-zdw/MM21-Coil)
 - [FACIL](https://github.com/mmasana/FACIL)
 
-## Contact
-
-If there are any questions, please feel free to  propose new features by opening an issue  or contact with the author: **Da-Wei Zhou**([zhoudw@lamda.nju.edu.cn](mailto:zhoudw@lamda.nju.edu.cn)) and **Fu-Yun Wang**(wangfuyun@smail.nju.edu.cn). Enjoy the code.
-
+更新日志:
+- finetune, finetune_replay, icarl, der, bic 确认没问题
+- ewc, gem, lwf, podnet, wa 修改好,在跑程序
+- coil 有个包没安装好

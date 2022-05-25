@@ -5,7 +5,7 @@ from methods.finetune import Finetune
 from methods.gem import GEM
 from methods.icarl import iCaRL
 from methods.lwf import LwF
-from methods.replay import Replay
+from methods.finetune_replay import Replay
 from methods.bic import BiC
 from methods.podnet import PODNet
 from methods.wa import WA
@@ -29,7 +29,7 @@ def get_model(model_name, args):
         return DER(args)
     elif name == "finetune":
         return Finetune(args)
-    elif name == "replay":
+    elif name == "finetune_replay":
         return Replay(args)
     elif name == "gem":
         return GEM(args)

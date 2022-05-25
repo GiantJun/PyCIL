@@ -11,28 +11,37 @@ from utils.inc_net import IncrementalNet
 from methods.base import BaseLearner
 from utils.toolkit import target2onehot, tensor2numpy
 
-init_epoch=200
-init_lr=0.1
-init_milestones=[60,120,160]
-init_lr_decay=0.1
-init_weight_decay=0.0005
+# init_epoch=200
+# init_lr=0.1
+# init_milestones=[60,120,160]
+# init_lr_decay=0.1
+# init_weight_decay=0.0005
 
 
-epochs = 250
-lrate = 0.1
-milestones = [60,120, 180,220]
-lrate_decay = 0.1
-batch_size = 128
-weight_decay=2e-4
-num_workers=8
-T=2
-lamda=3
+# epochs = 250
+# lrate = 0.1
+# milestones = [60,120, 180,220]
+# lrate_decay = 0.1
+# batch_size = 128
+# weight_decay=2e-4
+# num_workers=8
+# T=2
+# lamda=3
 
 class LwF(BaseLearner):
 
     def __init__(self, args):
         super().__init__(args)
         self._network = IncrementalNet(args['convnet_type'], False)
+
+        self._init_epoch = args['init_epoch']
+        self._init_lr = args['init_lr']
+        self._init_milestones = args['init_milestones']
+        self._init_lr_decay = args['init_lr_decay']
+        self._init_weight_decay = args['init_weight_decay']
+
+        self._T = args['T']
+        self._lamda = args['lamda']
 
     def after_task(self):
         self._old_network = self._network.copy().freeze()
@@ -46,9 +55,9 @@ class LwF(BaseLearner):
 
         train_dataset = data_manager.get_dataset(np.arange(self._known_classes, self._total_classes), source='train',
                                                  mode='train')
-        self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+        self.train_loader = DataLoader(train_dataset, batch_size=self._batch_size, shuffle=True, num_workers=self._num_workers)
         test_dataset = data_manager.get_dataset(np.arange(0, self._total_classes), source='test', mode='test')
-        self.test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        self.test_loader = DataLoader(test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
 
         if len(self._multiple_gpus) > 1:
             self._network = nn.DataParallel(self._network, self._multiple_gpus)
@@ -62,16 +71,16 @@ class LwF(BaseLearner):
             self._old_network.to(self._device)
 
         if self._cur_task==0:
-            optimizer = optim.SGD(self._network.parameters(), momentum=0.9,lr=init_lr,weight_decay=init_weight_decay) 
-            scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=init_milestones, gamma=init_lr_decay)            
+            optimizer = optim.SGD(self._network.parameters(), momentum=0.9,lr=self._init_lr,weight_decay=self._init_weight_decay) 
+            scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=self._init_milestones, gamma=self._init_lr_decay)            
             self._init_train(train_loader,test_loader,optimizer,scheduler)
         else:
-            optimizer = optim.SGD(self._network.parameters(), lr=lrate, momentum=0.9, weight_decay=weight_decay) 
-            scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=milestones, gamma=lrate_decay)
+            optimizer = optim.SGD(self._network.parameters(), lr=self._lrate, momentum=0.9, weight_decay=self._weight_decay) 
+            scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=self._milestones, gamma=self._lrate_decay)
             self._update_representation(train_loader, test_loader, optimizer, scheduler)
 
     def _init_train(self,train_loader,test_loader,optimizer,scheduler):
-        prog_bar = tqdm(range(init_epoch))
+        prog_bar = tqdm(range(self._init_epoch))
         for _, epoch in enumerate(prog_bar):
             self._network.train()
             losses = 0.
@@ -95,11 +104,11 @@ class LwF(BaseLearner):
 
             if epoch%5==0:
                 info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}'.format(
-                self._cur_task, epoch+1, init_epoch, losses/len(train_loader), train_acc)
+                self._cur_task, epoch+1, self._init_epoch, losses/len(train_loader), train_acc)
             else:
                 test_acc = self._compute_accuracy(self._network, test_loader)
                 info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}, Test_accy {:.2f}'.format(
-                self._cur_task, epoch+1, init_epoch, losses/len(train_loader), train_acc, test_acc)
+                self._cur_task, epoch+1, self._init_epoch, losses/len(train_loader), train_acc, test_acc)
             prog_bar.set_description(info)
 
         logging.info(info)
@@ -108,7 +117,7 @@ class LwF(BaseLearner):
 
     def _update_representation(self, train_loader, test_loader, optimizer, scheduler):
 
-        prog_bar = tqdm(range(epochs))
+        prog_bar = tqdm(range(self._epochs))
         for _, epoch in enumerate(prog_bar):
             self._network.train()
             losses = 0.
@@ -120,9 +129,9 @@ class LwF(BaseLearner):
 
                 fake_targets=targets-self._known_classes
                 loss_clf = F.cross_entropy(logits[:,self._known_classes:], fake_targets)
-                loss_kd =_KD_loss(logits[:,:self._known_classes],self._old_network(inputs)["logits"],T)
+                loss_kd =_KD_loss(logits[:,:self._known_classes],self._old_network(inputs)["logits"],self._T)
 
-                loss=lamda*loss_kd+loss_clf
+                loss=self._lamda*loss_kd+loss_clf
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -139,10 +148,10 @@ class LwF(BaseLearner):
             if epoch%5==0:
                 test_acc = self._compute_accuracy(self._network, test_loader)
                 info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}, Test_accy {:.2f}'.format(
-                self._cur_task, epoch+1, epochs, losses/len(train_loader), train_acc, test_acc)
+                self._cur_task, epoch+1, self._epochs, losses/len(train_loader), train_acc, test_acc)
             else:
                 info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}'.format(
-                self._cur_task, epoch+1, epochs, losses/len(train_loader), train_acc)
+                self._cur_task, epoch+1, self._epochs, losses/len(train_loader), train_acc)
             prog_bar.set_description(info)
         logging.info(info)
 

@@ -11,7 +11,7 @@ basic:
     shuffle: true
 
     # Method Choises: icarl, end2end, dr, ucir, bic, lwm, podnet, mas, joint， finetune
-    method: icarl
+    method: lwf
     # eval_metric Choises: acc, recall
     eval_metric: acc
 
@@ -36,21 +36,22 @@ basic:
 special:
     incre_type: cil
     T: 2
+    lamda: 3
 
 ######### Experiment Settings for Datasets #########
 options:
     # experiment settings for cifar100
     cifar100: 
-        resnet32: 
+        resnet32:             
             init_epoch: 200
             init_lr: 0.1
-            init_milestones: [60,120,170]
+            init_milestones: [60,120,160]
             init_lr_decay: 0.1
             init_weight_decay: 0.0005
 
-            epochs: 170
+            epochs: 250
             lrate: 0.1
-            milestones: [80, 120]
+            milestones: [60,120, 180,220]
             lrate_decay: 0.1
             batch_size: 128
             weight_decay: 0.0002
