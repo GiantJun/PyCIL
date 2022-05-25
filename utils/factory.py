@@ -1,14 +1,14 @@
-from models.coil import COIL
-from models.der import DER
-from models.ewc import EWC
-from models.finetune import Finetune
-from models.gem import GEM
-from models.icarl import iCaRL
-from models.lwf import LwF
-from models.replay import Replay
-from models.bic import BiC
-from models.podnet import PODNet
-from models.wa import WA
+from methods.coil import COIL
+from methods.der import DER
+from methods.ewc import EWC
+from methods.finetune import Finetune
+from methods.gem import GEM
+from methods.icarl import iCaRL
+from methods.lwf import LwF
+from methods.replay import Replay
+from methods.bic import BiC
+from methods.podnet import PODNet
+from methods.wa import WA
 
 
 def get_model(model_name, args):

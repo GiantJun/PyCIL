@@ -22,10 +22,19 @@ class BaseLearner(object):
         self.topk = 5
 
         self._memory_size = args['memory_size']
-        self._memory_per_class = args['memory_per_class']
         self._fixed_memory = args['fixed_memory']
+        if self._fixed_memory:
+            self._memory_per_class = args['memory_per_class']
         self._device = args['device'][0]
         self._multiple_gpus = args['device']
+
+        self._epochs = args['epochs']
+        self._lrate = args['lrate']
+        self._milestones = args['milestones']
+        self._lrate_decay = args['lrate_decay']
+        self._batch_size = args['batch_size']
+        self._weight_decay = args['weight_decay']
+        self._num_workers = args['num_workers']
 
     @property
     def exemplar_size(self):

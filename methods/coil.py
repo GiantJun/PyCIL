@@ -5,7 +5,7 @@ import torch
 from torch import optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
-from models.base import BaseLearner
+from methods.base import BaseLearner
 from utils.inc_net import IncrementalNet,CosineIncrementalNet,SimpleCosineIncrementalNet
 from utils.toolkit import target2onehot, tensor2numpy
 # import ot

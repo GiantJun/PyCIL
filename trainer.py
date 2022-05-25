@@ -24,7 +24,7 @@ def _train(args):
     except:
         pass
     nowTime = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-    logfilename = 'logs/{}/{}_{}_{}_{}_{}_{}_{}_{}'.format(args['model_name'], args['prefix'], args['seed'], args['model_name'], args['convnet_type'],
+    logfilename = 'logs/{}/{}_{}_{}_{}_{}_{}_{}_{}'.format(args['method'], args['prefix'], args['seed'], args['method'], args['backbone'],
                                                 args['dataset'], args['init_cls'], args['increment'], nowTime)
     logging.basicConfig(
         level=logging.INFO,
@@ -39,7 +39,7 @@ def _train(args):
     _set_device(args)
     print_args(args)
     data_manager = DataManager(args['dataset'], args['shuffle'], args['seed'], args['init_cls'], args['increment'])
-    model = factory.get_model(args['model_name'], args)
+    model = factory.get_model(args['method'], args)
 
     cnn_curve, nme_curve = {'top1': [], 'top5': []}, {'top1': [], 'top5': []}
     for task in range(data_manager.nb_tasks):

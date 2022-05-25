@@ -6,7 +6,7 @@ from torch import nn
 from torch import optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
-from models.base import BaseLearner
+from methods.base import BaseLearner
 from utils.inc_net import IncrementalNet
 from utils.toolkit import target2onehot, tensor2numpy
 
@@ -20,22 +20,25 @@ init_lr_decay=0.1
 init_weight_decay=0.0005
 
 
-epochs=70
+epochs = 170
 lrate = 0.1
-milestones=[30,50]
+milestones = [60, 100,140]
 lrate_decay = 0.1
 batch_size = 128
 weight_decay=2e-4
-num_workers=4
+num_workers=8
 T=2
 
-class Replay(BaseLearner):
+class WA(BaseLearner):
 
     def __init__(self, args):
         super().__init__(args)
         self._network = IncrementalNet(args['convnet_type'], False)
 
     def after_task(self):
+        if self._cur_task>0:
+            self._network.weight_align(self._total_classes-self._known_classes)
+        self._old_network = self._network.copy().freeze()
         self._known_classes = self._total_classes
         logging.info('Exemplar size: {}'.format(self.exemplar_size))
 
@@ -56,15 +59,15 @@ class Replay(BaseLearner):
         if len(self._multiple_gpus) > 1:
             self._network = nn.DataParallel(self._network, self._multiple_gpus)
         self._train(self.train_loader, self.test_loader)
-
-
         self.build_rehearsal_memory(data_manager, self.samples_per_class)
         if len(self._multiple_gpus) > 1:
             self._network = self._network.module
 
-
     def _train(self, train_loader, test_loader):
         self._network.to(self._device)
+        if self._old_network is not None:
+            self._old_network.to(self._device)
+
         if self._cur_task==0:
             optimizer = optim.SGD(self._network.parameters(), momentum=0.9,lr=init_lr,weight_decay=init_weight_decay) 
             scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=init_milestones, gamma=init_lr_decay)            
@@ -73,6 +76,11 @@ class Replay(BaseLearner):
             optimizer = optim.SGD(self._network.parameters(), lr=lrate, momentum=0.9, weight_decay=weight_decay)  # 1e-5
             scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=milestones, gamma=lrate_decay)
             self._update_representation(train_loader, test_loader, optimizer, scheduler)
+            if len(self._multiple_gpus) > 1:
+                self._network.module.weight_align(self._total_classes-self._known_classes)
+            else:
+                self._network.weight_align(self._total_classes-self._known_classes)
+
 
     def _init_train(self,train_loader,test_loader,optimizer,scheduler):
         prog_bar = tqdm(range(init_epoch))
@@ -94,6 +102,7 @@ class Replay(BaseLearner):
                 correct += preds.eq(targets.expand_as(preds)).cpu().sum()
                 total += len(targets)
 
+
             scheduler.step()
             train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
 
@@ -108,8 +117,6 @@ class Replay(BaseLearner):
 
         logging.info(info)
 
-
-
     def _update_representation(self, train_loader, test_loader, optimizer, scheduler):
         prog_bar = tqdm(range(epochs))
         for _, epoch in enumerate(prog_bar):
@@ -121,7 +128,9 @@ class Replay(BaseLearner):
                 logits = self._network(inputs)['logits']
 
                 loss_clf=F.cross_entropy(logits,targets)
-                loss=loss_clf
+                loss_kd=_KD_loss(logits[:,:self._known_classes],self._old_network(inputs)["logits"],T)
+
+                loss=loss_clf+2*loss_kd
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -144,3 +153,7 @@ class Replay(BaseLearner):
                 self._cur_task, epoch+1, epochs, losses/len(train_loader), train_acc)
             prog_bar.set_description(info)
         logging.info(info)
+def _KD_loss(pred, soft, T):
+    pred = torch.log_softmax(pred/T, dim=1)
+    soft = torch.softmax(soft/T, dim=1)
+    return -1 * torch.mul(soft, pred).sum()/pred.shape[0]
