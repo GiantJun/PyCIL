@@ -69,7 +69,7 @@ class Replay(BaseLearner):
 
 
     def _train(self, train_loader, test_loader):
-        self._network.to(self._device)
+        self._network.cuda()
         if self._cur_task==0:
             optimizer = optim.SGD(self._network.parameters(), momentum=0.9,lr=self._init_lr,weight_decay=self._init_weight_decay) 
             scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=self._init_milestones, gamma=self._init_lr_decay)            
@@ -86,7 +86,7 @@ class Replay(BaseLearner):
             losses = 0.
             correct, total = 0, 0
             for i, (_, inputs, targets) in enumerate(train_loader):
-                inputs, targets = inputs.to(self._device), targets.to(self._device)
+                inputs, targets = inputs.cuda(), targets.cuda()
                 logits = self._network(inputs)['logits']
 
                 loss=F.cross_entropy(logits,targets) 
@@ -122,7 +122,7 @@ class Replay(BaseLearner):
             losses = 0.
             correct, total = 0, 0
             for i, (_, inputs, targets) in enumerate(train_loader):
-                inputs, targets = inputs.to(self._device), targets.to(self._device)
+                inputs, targets = inputs.cuda(), targets.cuda()
                 logits = self._network(inputs)['logits']
 
                 loss_clf=F.cross_entropy(logits,targets)

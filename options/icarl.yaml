@@ -1,7 +1,7 @@
 ######### Basic Settings #########
 basic:
     prefix: reproduce
-    device: ['3']
+    device: '6'
     seed: [1993] # icarl 官方代码给的种子是 1993
     num_workers: 4
 

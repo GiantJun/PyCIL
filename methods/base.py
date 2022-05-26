@@ -25,8 +25,7 @@ class BaseLearner(object):
         self._fixed_memory = args['fixed_memory']
         if self._fixed_memory:
             self._memory_per_class = args['memory_per_class']
-        self._device = args['device'][0]
-        self._multiple_gpus = args['device']
+        self._multiple_gpus = list(range(len(args['device'].split(','))))
 
         self._epochs = args['epochs']
         self._lrate = args['lrate']
@@ -112,20 +111,20 @@ class BaseLearner(object):
         model.eval()
         correct, total = 0, 0
         for i, (_, inputs, targets) in enumerate(loader):
-            inputs = inputs.to(self._device)
+            inputs = inputs.cuda()
             with torch.no_grad():
                 outputs = model(inputs)['logits']
             predicts = torch.max(outputs, dim=1)[1]
             correct += (predicts.cpu() == targets).sum()
             total += len(targets)
 
-        return np.around(tensor2numpy(correct)*100 / total, decimals=2)
+        return torch.round((correct)*100 / total, decimals=2)
 
     def _eval_cnn(self, loader):
         self._network.eval()
         y_pred, y_true = [], []
         for _, (_, inputs, targets) in enumerate(loader):
-            inputs = inputs.to(self._device)
+            inputs = inputs.cuda()
             with torch.no_grad():
                 outputs = self._network(inputs)['logits']
             predicts = torch.topk(outputs, k=self.topk, dim=1, largest=True, sorted=True)[1]  # [bs, topk]
@@ -143,6 +142,19 @@ class BaseLearner(object):
         scores = dists.T  # [N, nb_classes], choose the one with the smallest distance
 
         return np.argsort(scores, axis=1)[:, :self.topk], y_true  # [N, topk]
+    
+    def _eval_cnn_nme(self, loader, class_means=None):
+        self._network.eval()
+        cnn_pred, y_true = [], []
+        for _, (_, inputs, targets) in enumerate(loader):
+            inputs = inputs.cuda()
+            with torch.no_grad():
+                outputs = self._network(inputs)['logits']
+            predicts = torch.topk(outputs, k=self.topk, dim=1, largest=True, sorted=True)[1]  # [bs, topk]
+            cnn_pred.append(predicts)
+            y_true.append(targets)
+
+        return np.concatenate(cnn_pred), np.concatenate(y_true)  # [N, topk]
 
     def _extract_vectors(self, loader):
         self._network.eval()
@@ -150,9 +162,9 @@ class BaseLearner(object):
         for _, _inputs, _targets in loader:
             _targets = _targets.numpy()
             if isinstance(self._network, nn.DataParallel):
-                _vectors = tensor2numpy(self._network.module.extract_vector(_inputs.to(self._device)))
+                _vectors = tensor2numpy(self._network.module.extract_vector(_inputs.cuda()))
             else:
-                _vectors = tensor2numpy(self._network.extract_vector(_inputs.to(self._device)))
+                _vectors = tensor2numpy(self._network.extract_vector(_inputs.cuda()))
 
             vectors.append(_vectors)
             targets.append(_targets)

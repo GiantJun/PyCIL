@@ -91,9 +91,9 @@ class PODNet(BaseLearner):
             self.factor = math.sqrt(self._total_classes / (self._total_classes - self._known_classes))
         logging.info('Adaptive factor: {}'.format(self.factor))
 
-        self._network.to(self._device)
+        self._network.cuda()
         if self._old_network is not None:
-            self._old_network.to(self._device)
+            self._old_network.cuda()
 
         if self._cur_task == 0:
             network_params = self._network.parameters()
@@ -145,7 +145,7 @@ class PODNet(BaseLearner):
             flat_losses = 0.  
             correct, total = 0, 0
             for i, (_, inputs, targets) in enumerate(train_loader):
-                inputs, targets = inputs.to(self._device), targets.to(self._device)
+                inputs, targets = inputs.cuda(), targets.cuda()
                 outputs = self._network(inputs)
                 logits = outputs['logits']
                 features = outputs['features']

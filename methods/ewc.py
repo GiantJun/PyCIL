@@ -81,7 +81,7 @@ class EWC(BaseLearner):
             self.fisher=new_finsher
         self.mean={n: p.clone().detach() for n, p in self._network.named_parameters() if p.requires_grad}
     def _train(self, train_loader, test_loader):
-        self._network.to(self._device)
+        self._network.cuda()
         if self._cur_task==0:
             optimizer = optim.SGD(self._network.parameters(), momentum=0.9,lr=self._init_lr,weight_decay=self._init_weight_decay) 
             scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=self._init_milestones, gamma=self._init_lr_decay)            
@@ -99,7 +99,7 @@ class EWC(BaseLearner):
             losses = 0.
             correct, total = 0, 0
             for i, (_, inputs, targets) in enumerate(train_loader):
-                inputs, targets = inputs.to(self._device), targets.to(self._device)
+                inputs, targets = inputs.cuda(), targets.cuda()
                 logits = self._network(inputs)['logits']
                 loss=F.cross_entropy(logits,targets)
                 optimizer.zero_grad()
@@ -132,7 +132,7 @@ class EWC(BaseLearner):
             losses = 0.
             correct, total = 0, 0
             for i, (_, inputs, targets) in enumerate(train_loader):
-                inputs, targets = inputs.to(self._device), targets.to(self._device)
+                inputs, targets = inputs.cuda(), targets.cuda()
                 logits = self._network(inputs)['logits']
 
                 loss_clf=F.cross_entropy(logits[:,self._known_classes:],targets-self._known_classes)
@@ -174,12 +174,12 @@ class EWC(BaseLearner):
         
 
     def getFisherDiagonal(self,train_loader):
-        fisher = {n: torch.zeros(p.shape).to(self._device) for n, p in self._network.named_parameters()
+        fisher = {n: torch.zeros(p.shape).cuda() for n, p in self._network.named_parameters()
                   if p.requires_grad}
         self._network.train()
         optimizer = optim.SGD(self._network.parameters(),lr=self._lrate)
         for i, (_, inputs, targets) in enumerate(train_loader):
-            inputs, targets = inputs.to(self._device), targets.to(self._device)
+            inputs, targets = inputs.cuda(), targets.cuda()
             logits = self._network(inputs)['logits']
             loss = torch.nn.functional.cross_entropy(logits, targets)
             optimizer.zero_grad()

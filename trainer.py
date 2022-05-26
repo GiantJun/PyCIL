@@ -10,11 +10,11 @@ import datetime
 
 def train(args):
     seed_list = copy.deepcopy(args['seed'])
-    device = copy.deepcopy(args['device'])
+
+    os.environ['CUDA_VISIBLE_DEVICES']=args['device']
 
     for seed in seed_list:
         args['seed'] = seed
-        args['device'] = device
         _train(args)
 
 
@@ -36,7 +36,7 @@ def _train(args):
     )
 
     _set_random()
-    _set_device(args)
+    # _set_device(args)
     print_args(args)
     data_manager = DataManager(args['dataset'], args['shuffle'], args['seed'], args['init_cls'], args['increment'])
     model = factory.get_model(args['method'], args)
@@ -98,5 +98,10 @@ def _set_random():
 
 
 def print_args(args):
+    # log hyperparameter
+    logging.info(30*"=")
+    logging.info("log_hyperparameters")
+    logging.info(30*"-")
     for key, value in args.items():
         logging.info('{}: {}'.format(key, value))
+    logging.info(30*"=")

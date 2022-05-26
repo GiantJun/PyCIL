@@ -102,9 +102,9 @@ class COIL(BaseLearner):
         self._construct_exemplar(data_manager, memory_size//self._total_classes)
 
     def _train(self, train_loader, test_loader):
-        self._network.to(self._device)
+        self._network.cuda()
         if self._old_network is not None:
-            self._old_network.to(self._device)
+            self._old_network.cuda()
         optimizer = optim.SGD(self._network.parameters(), lr=lrate, momentum=0.9, weight_decay=5e-4)  # 1e-5
         scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=milestones, gamma=lrate_decay)
         self._update_representation(train_loader, test_loader, optimizer, scheduler)
@@ -120,7 +120,7 @@ class COIL(BaseLearner):
             correct, total = 0, 0
             
             for i, (_, inputs, targets) in enumerate(train_loader):
-                inputs, targets = inputs.to(self._device), targets.to(self._device)
+                inputs, targets = inputs.cuda(), targets.cuda()
                 output=self._network(inputs)
                 logits = output['logits']
                 onehots = target2onehot(targets, self._total_classes)

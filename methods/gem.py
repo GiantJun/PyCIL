@@ -84,9 +84,9 @@ class GEM(BaseLearner):
             self._network = self._network.module
 
     def _train(self, train_loader, test_loader):
-        self._network.to(self._device)
+        self._network.cuda()
         if self._old_network is not None:
-            self._old_network.to(self._device)
+            self._old_network.cuda()
 
         if self._cur_task==0:
             optimizer = optim.SGD(self._network.parameters(), momentum=0.9,lr=self._init_lr,weight_decay=self._init_weight_decay) 
@@ -104,7 +104,7 @@ class GEM(BaseLearner):
             losses = 0.
             correct, total = 0, 0
             for i, (_, inputs, targets) in enumerate(train_loader):
-                inputs, targets = inputs.to(self._device), targets.to(self._device)
+                inputs, targets = inputs.cuda(), targets.cuda()
                 logits = self._network(inputs)['logits']
 
                 loss=F.cross_entropy(logits,targets) #crossEntropy 一般学习率比较小 BCE一般学习率比较大。
@@ -138,7 +138,7 @@ class GEM(BaseLearner):
         grad_numels = []
         for params in self._network.parameters():
             grad_numels.append(params.data.numel())
-        G = torch.zeros((sum(grad_numels), self._cur_task+1)).to(self._device)#用于存储每个task的gradient。
+        G = torch.zeros((sum(grad_numels), self._cur_task+1)).cuda()#用于存储每个task的gradient。
             
 
         for _, epoch in enumerate(prog_bar):
@@ -150,8 +150,8 @@ class GEM(BaseLearner):
                 for k in range(0, self._cur_task):
                     optimizer.zero_grad()
                     mask=torch.where((self.previous_label>=k*incremental_step)&(self.previous_label<(k+1)*incremental_step))[0]
-                    data_=self.previous_data[mask].to(self._device)
-                    label_=self.previous_label[mask].to(self._device)
+                    data_=self.previous_data[mask].cuda()
+                    label_=self.previous_label[mask].cuda()
                     pred_ = self._network(data_)["logits"]
                     pred_[:, : k * incremental_step].data.fill_(-10e10)
                     pred_[:, (k+1) * incremental_step:].data.fill_(-10e10)
@@ -173,7 +173,7 @@ class GEM(BaseLearner):
                     optimizer.zero_grad()            
                     
 
-                inputs, targets = inputs.to(self._device), targets.to(self._device)
+                inputs, targets = inputs.cuda(), targets.cuda()
                 logits = self._network(inputs)['logits']
                 logits[:,:self._known_classes].data.fill_(-10e10)
                 loss_clf=F.cross_entropy(logits,targets)
@@ -210,7 +210,7 @@ class GEM(BaseLearner):
                     v=solve_qp(C,-p,A,b)[0]
 
                     new_grad=old_grad.T@v+cur_grad
-                    new_grad=torch.tensor(new_grad).float().to(self._device)
+                    new_grad=torch.tensor(new_grad).float().cuda()
 
                     new_dotprod = torch.mm(new_grad.unsqueeze(0), G[:, :self._cur_task])
                     if(new_dotprod < -0.01).sum() >0:assert 0

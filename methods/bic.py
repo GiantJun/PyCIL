@@ -80,7 +80,7 @@ class BiC(BaseLearner):
             self._network.train()
             losses = 0.
             for i, (_, inputs, targets) in enumerate(train_loader):
-                inputs, targets = inputs.to(self._device), targets.to(self._device)
+                inputs, targets = inputs.cuda(), targets.cuda()
                 logits = self._network(inputs)['logits']
 
                 if stage == 'training':
@@ -115,7 +115,7 @@ class BiC(BaseLearner):
         if self._cur_task == 0:
             loaded_dict = torch.load('./dict_0.pkl')
             self._network.load_state_dict(loaded_dict['model_state_dict'])
-            self._network.to(self._device)
+            self._network.cuda()
             return
         '''
 
@@ -128,9 +128,9 @@ class BiC(BaseLearner):
 
         if len(self._multiple_gpus) > 1:
             self._network = nn.DataParallel(self._network, self._multiple_gpus)
-        self._network.to(self._device)
+        self._network.cuda()
         if self._old_network is not None:
-            self._old_network.to(self._device)
+            self._old_network.cuda()
 
         self._run(train_loader, test_loader, optimizer, scheduler, stage='training')
 
@@ -144,7 +144,7 @@ class BiC(BaseLearner):
 
         if len(self._multiple_gpus) > 1:
             self._network = nn.DataParallel(self._network, self._multiple_gpus)
-        self._network.to(self._device)
+        self._network.cuda()
 
         self._run(val_loader, test_loader, optimizer, scheduler, stage='bias_correction')
 
