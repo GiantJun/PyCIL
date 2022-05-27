@@ -43,8 +43,8 @@ class iCaRL(BaseLearner):
 
         self._T = args['T']
 
-        # self._init_epoch = 1
-        # self._epochs = 1
+        self._init_epoch = 1
+        self._epochs = 1
 
     def after_task(self):
         self._old_network = self._network.copy().freeze()

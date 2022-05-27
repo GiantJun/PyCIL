@@ -5,6 +5,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from utils.toolkit import tensor2numpy, accuracy
+import torch.nn.functional as F
 from scipy.spatial.distance import cdist
 
 EPSILON = 1e-8
@@ -19,13 +20,19 @@ class BaseLearner(object):
         self._network = None
         self._old_network = None
         self._data_memory, self._targets_memory = np.array([]), np.array([])
-        self.topk = 5
+
+        # 评价指标变化曲线
+        self.cnn_task_metric_curve = None
+        self.nme_task_metric_curve = None
+        self.cnn_metric_curve = []
+        self.nme_metric_curve = []
 
         self._memory_size = args['memory_size']
         self._fixed_memory = args['fixed_memory']
         if self._fixed_memory:
             self._memory_per_class = args['memory_per_class']
         self._multiple_gpus = list(range(len(args['device'].split(','))))
+        self._eval_metric = args['eval_metric']
 
         self._epochs = args['epochs']
         self._lrate = args['lrate']
@@ -73,27 +80,44 @@ class BaseLearner(object):
     def after_task(self):
         pass
 
-    def _evaluate(self, y_pred, y_true):
-        ret = {}
-        grouped = accuracy(y_pred.T[0], y_true, self._known_classes)
-        ret['grouped'] = grouped
-        ret['top1'] = grouped['total']
-        ret['top{}'.format(self.topk)] = np.around((y_pred.T == np.tile(y_true, (self.topk, 1))).sum()*100/len(y_true),
-                                                   decimals=2)
 
-        return ret
+    def eval_task(self, data_manager):
+        if self.cnn_task_metric_curve == None:
+            self.cnn_task_metric_curve = [[] for i in range(data_manager.nb_tasks)]
+            self.nme_task_metric_curve = [[] for i in range(data_manager.nb_tasks)]
 
-    def eval_task(self):
-        y_pred, y_true = self._eval_cnn(self.test_loader)
-        cnn_accy = self._evaluate(y_pred, y_true)
+        cnn_pred, nme_pred, y_true = self._eval_cnn_nme(self.test_loader)
+        
+        logging.info(50*"-")
+        logging.info("log {} of every task".format(self._eval_metric))
+        logging.info(50*"-")
 
-        if hasattr(self, '_class_means'):
-            y_pred, y_true = self._eval_nme(self.test_loader, self._class_means)
-            nme_accy = self._evaluate(y_pred, y_true)
+        # 计算top1, 这里去掉了计算 topk 的代码
+        if self._eval_metric == 'acc':
+            cnn_total, cnn_task = accuracy(cnn_pred.T, y_true, self._total_classes, data_manager._increments)
         else:
-            nme_accy = None
+            pass
+        self.cnn_metric_curve.append(cnn_total)
+        logging.info("CNN : {} curve of all task is {}".format(self._eval_metric, self.cnn_metric_curve))
+        for i in range(len(cnn_task)):
+            self.cnn_task_metric_curve[i].append(cnn_task[i])
+            logging.info("CNN : task {} {} curve is {}".format(i, self._eval_metric, self.cnn_task_metric_curve[i]))
+        logging.info("CNN : Average Acc: {:.2f}".format(np.mean(self.cnn_metric_curve)))
+        logging.info(' ')
+    
+        if len(nme_pred) > 0:
+            if self._eval_metric == 'acc':
+                nme_total, nme_task = accuracy(nme_pred.T, y_true, self._total_classes, data_manager._increments)
+            else:
+                pass
+            self.nme_metric_curve.append(nme_total)
+            logging.info("NME : {} curve of all task is {}".format(self._eval_metric, self.nme_metric_curve))
+            for i in range(len(nme_task)):
+                self.nme_task_metric_curve[i].append(nme_task[i])
+                logging.info("NME : task {} {} curve is {}".format(i, self._eval_metric, self.nme_task_metric_curve[i]))
+            logging.info("NME : Average Acc: {:.2f}".format(np.mean(self.nme_metric_curve)))
+            logging.info(' ')
 
-        return cnn_accy, nme_accy
 
     def incremental_train(self):
         pass
@@ -118,43 +142,27 @@ class BaseLearner(object):
             correct += (predicts.cpu() == targets).sum()
             total += len(targets)
 
-        return torch.round((correct)*100 / total, decimals=2)
-
-    def _eval_cnn(self, loader):
-        self._network.eval()
-        y_pred, y_true = [], []
-        for _, (_, inputs, targets) in enumerate(loader):
-            inputs = inputs.cuda()
-            with torch.no_grad():
-                outputs = self._network(inputs)['logits']
-            predicts = torch.topk(outputs, k=self.topk, dim=1, largest=True, sorted=True)[1]  # [bs, topk]
-            y_pred.append(predicts.cpu().numpy())
-            y_true.append(targets.cpu().numpy())
-
-        return np.concatenate(y_pred), np.concatenate(y_true)  # [N, topk]
-
-    def _eval_nme(self, loader, class_means):
-        self._network.eval()
-        vectors, y_true = self._extract_vectors(loader)
-        vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
-
-        dists = cdist(class_means, vectors, 'sqeuclidean')  # [nb_classes, N]
-        scores = dists.T  # [N, nb_classes], choose the one with the smallest distance
-
-        return np.argsort(scores, axis=1)[:, :self.topk], y_true  # [N, topk]
+        return np.around(tensor2numpy(correct)*100 / total, decimals=2)
     
-    def _eval_cnn_nme(self, loader, class_means=None):
+    def _eval_cnn_nme(self, loader):
         self._network.eval()
-        cnn_pred, y_true = [], []
+        cnn_pred, nme_pred, y_true = [], [], []
         for _, (_, inputs, targets) in enumerate(loader):
             inputs = inputs.cuda()
             with torch.no_grad():
-                outputs = self._network(inputs)['logits']
-            predicts = torch.topk(outputs, k=self.topk, dim=1, largest=True, sorted=True)[1]  # [bs, topk]
-            cnn_pred.append(predicts)
+                outputs = self._network(inputs)
+            cnn_predicts = torch.max(outputs['logits'], dim=1)[1]
+            cnn_pred.append(tensor2numpy(cnn_predicts))
+            if hasattr(self, '_class_means'):
+                vectors = tensor2numpy(outputs['features'])
+                vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
+                scores = cdist(vectors, self._class_means)
+                nme_predicts = np.argmax(scores, axis=1)
+                nme_pred.append(nme_predicts)
             y_true.append(targets)
 
-        return np.concatenate(cnn_pred), np.concatenate(y_true)  # [N, topk]
+        return np.concatenate(cnn_pred), np.concatenate(nme_pred) if len(nme_pred)!=0 else nme_pred, \
+                np.concatenate(y_true)  # [N, topk]
 
     def _extract_vectors(self, loader):
         self._network.eval()
