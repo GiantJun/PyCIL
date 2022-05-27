@@ -151,13 +151,13 @@ class BaseLearner(object):
             inputs = inputs.cuda()
             with torch.no_grad():
                 outputs = self._network(inputs)
-            cnn_predicts = torch.max(outputs['logits'], dim=1)[1]
+            cnn_predicts = torch.argmax(outputs['logits'], dim=1)
             cnn_pred.append(tensor2numpy(cnn_predicts))
             if hasattr(self, '_class_means'):
                 vectors = tensor2numpy(outputs['features'])
                 vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
                 scores = cdist(vectors, self._class_means)
-                nme_predicts = np.argmax(scores, axis=1)
+                nme_predicts = np.argmin(scores, axis=1)
                 nme_pred.append(nme_predicts)
             y_true.append(targets)
 
