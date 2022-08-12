@@ -10,18 +10,18 @@ EPSILON = 1e-8
 
 class ReplayBank:
 
-    def __init__(self, args):
-        self._method = args['method']
-        self._batch_size = args['batch_size']
-        self._num_workers = args['num_workers']
+    def __init__(self, config):
+        self._method = config.method
+        self._batch_size = config.batch_size
+        self._num_workers = config.num_workers
 
-        self._memory_size = args['memory_size']
+        self._memory_size = config.memory_size
         # 有两种样本存储形式, 但都固定存储空间。一种是固定每一类数据存储样本的数量(为True时)
         # 另一种在固定存储空间中，平均分配每一类允许存储的样本数量
-        self._fixed_memory = args['fixed_memory']
+        self._fixed_memory = config.fixed_memory
         if self._fixed_memory:
-            self._memory_per_class = args['memory_per_class']
-        self._sampling_method = args['sampling_method'] # 采样的方式
+            self._memory_per_class = config.memory_per_class
+        self._sampling_method = config.sampling_method # 采样的方式
 
         self._data_memory = [] # 第一维长度为类别数，第二维为每一类允许存放的样本数
         self._vector_memory = []

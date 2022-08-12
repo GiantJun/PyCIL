@@ -11,29 +11,29 @@ from methods.podnet import PODNet
 from methods.wa import WA
 
 
-def get_model(model_name, args):
-    name = model_name.lower()
+def get_trainer(config):
+    name = config.method.lower()
     if name == 'icarl':
-        return iCaRL(args)
+        return iCaRL(config)
     elif name == 'bic':
-        return BiC(args)
+        return BiC(config)
     elif name == 'podnet':
-        return PODNet(args)
+        return PODNet(config)
     elif name == "lwf":
-        return LwF(args)
+        return LwF(config)
     elif name == "ewc":
-        return EWC(args)
+        return EWC(config)
     elif name == "wa":
-        return WA(args)
+        return WA(config)
     elif name == "der":
-        return DER(args)
+        return DER(config)
     elif name == "finetune":
-        return Finetune(args)
+        return Finetune(config)
     elif name == "finetune_replay":
-        return Replay(args)
+        return Replay(config)
     elif name == "gem":
-        return GEM(args)
+        return GEM(config)
     elif name == "coil":
-        return COIL(args)
+        return COIL(config)
     else:
         assert 0

@@ -7,7 +7,7 @@ from torch import optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from methods.base import BaseLearner
-from utils.inc_net import DERNet, IncrementalNet
+from backbone.inc_net import DERNet, IncrementalNet
 from utils.toolkit import count_parameters, target2onehot, tensor2numpy
 
 EPSILON = 1e-8
@@ -31,14 +31,14 @@ EPSILON = 1e-8
 
 class DER(BaseLearner):
 
-    def __init__(self, args):
-        super().__init__(args)
-        self._init_epoch = args['init_epoch']
-        self._init_lr = args['init_lr']
-        self._init_milestones = args['init_milestones']
-        self._init_lr_decay = args['init_lr_decay']
-        self._init_weight_decay = args['init_weight_decay']
-        self._network = DERNet(args['backbone'], args['pretrained'])
+    def __init__(self, config):
+        super().__init__(config)
+        self._init_epoch = config.init_epoch
+        self._init_lr = config.init_lr
+        self._init_milestones = config.init_milestones
+        self._init_lr_decay = config.init_lr_decay
+        self._init_weight_decay = config.init_weight_decay
+        self._network = DERNet(config.backbone, config.pretrained)
 
     def after_task(self):
         self._known_classes = self._total_classes

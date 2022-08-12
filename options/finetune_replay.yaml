@@ -12,6 +12,7 @@ basic:
 
     # Method Choises: icarl, end2end, dr, ucir, bic, lwm, podnet, mas, joint， finetune
     method: finetune_replay
+    incre_type: cil
     # eval_metric Choises: acc, recall
     eval_metric: acc
 
@@ -21,11 +22,6 @@ basic:
     pretrained: false
     save_models: false # if true, programm will save model's weights during incremental train
 
-    ######### Exampler Hyperparameters #########
-    memory_size: 2000
-    fixed_memory: false
-    sampling_method: icarl # icarl, random, closest_to_mean 
-
     ######### Task Settings, unimportant in Joint #########
     # for some datasets(e.g. MedMNist), this will be ignored
     init_cls: 10
@@ -34,7 +30,10 @@ basic:
 
 ######### Method's Hyperparameters #########
 special:
-    incre_type: cil
+    ######### Exampler Hyperparameters #########
+    memory_size: 2000
+    fixed_memory: false
+    sampling_method: icarl # icarl, random, closest_to_mean
 
 ######### Experiment Settings for Datasets #########
 options:

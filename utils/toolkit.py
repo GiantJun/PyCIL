@@ -1,7 +1,10 @@
 import os
 import numpy as np
 import torch
-
+from tensorboardX import SummaryWriter
+import datetime
+import logging
+import sys
 
 def count_parameters(model, trainable=False):
     if trainable:
@@ -19,7 +22,7 @@ def target2onehot(targets, n_classes):
     return onehot
 
 
-def makedirs(path):
+def check_makedirs(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
@@ -50,3 +53,22 @@ def split_images_labels(imgs):
         labels.append(item[1])
 
     return np.array(images), np.array(labels)
+
+def set_logger(config, ret_tblog=True) -> SummaryWriter:
+    os.makedirs("logs/{}".format(config.method))
+    nowTime = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+    logfilename = 'logs/{}/{}_{}_{}_{}_{}_{}_{}_{}.log'.format(config.method, config.prefix, config.seed, config.method, config.backbone,
+                                                config.dataset, config.init_cls, config.increment, nowTime)
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(filename)s] => %(message)s',
+        handlers=[
+            logging.FileHandler(filename=logfilename),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    logdir = 'logs/{}'.format(config.method)
+    if ret_tblog:
+        return SummaryWriter(logdir)
+    else:
+        return None

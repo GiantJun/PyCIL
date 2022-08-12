@@ -7,7 +7,7 @@ from tqdm import tqdm
 from torch import optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
-from utils.inc_net import IncrementalNet
+from backbone.inc_net import IncrementalNet
 from methods.base import BaseLearner
 from utils.toolkit import target2onehot, tensor2numpy
 
@@ -30,18 +30,18 @@ from utils.toolkit import target2onehot, tensor2numpy
 
 class LwF(BaseLearner):
 
-    def __init__(self, args):
-        super().__init__(args)
-        self._network = IncrementalNet(args['convnet_type'], False)
+    def __init__(self, config):
+        super().__init__(config)
+        self._network = IncrementalNet(config.convnet_type, False)
 
-        self._init_epoch = args['init_epoch']
-        self._init_lr = args['init_lr']
-        self._init_milestones = args['init_milestones']
-        self._init_lr_decay = args['init_lr_decay']
-        self._init_weight_decay = args['init_weight_decay']
+        self._init_epoch = config.init_epoch
+        self._init_lr = config.init_lr
+        self._init_milestones = config.init_milestones
+        self._init_lr_decay = config.init_lr_decay
+        self._init_weight_decay = config.init_weight_decay
 
-        self._T = args['T']
-        self._lamda = args['lamda']
+        self._T = config.T
+        self._lamda = config.lamda
 
     def after_task(self):
         self._old_network = self._network.copy().freeze()

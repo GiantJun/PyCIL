@@ -6,7 +6,7 @@ from torch import optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from methods.base import BaseLearner
-from utils.inc_net import CosineIncrementalNet
+from backbone.inc_net import CosineIncrementalNet
 from utils.toolkit import tensor2numpy
 
 # epochs = 160
@@ -51,17 +51,17 @@ Maybe I missed something...
 
 class PODNet(BaseLearner):
 
-    def __init__(self, args):
-        super().__init__(args)
+    def __init__(self, config):
+        super().__init__(config)
         self._class_means = None
 
-        self._lambda_c_base = args['lambda_c_base']
-        self._lambda_f_base = args['lambda_f_base']
-        self._nb_proxy = args['nb_proxy']
-        self._ft_epochs = args['ft_epochs']
-        self._ft_lrate = args['ft_lrate']
+        self._lambda_c_base = config.lambda_c_base
+        self._lambda_f_base = config.lambda_f_base
+        self._nb_proxy = config.nb_proxy
+        self._ft_epochs = config.ft_epochs
+        self._ft_lrate = config.ft_lrate
 
-        self._network = CosineIncrementalNet(args['backbone'], pretrained=args['pretrained'], nb_proxy=self._nb_proxy)
+        self._network = CosineIncrementalNet(config.backbone, pretrained=config.pretrained, nb_proxy=self._nb_proxy)
 
     def after_task(self):
         self._old_network = self._network.copy().freeze()

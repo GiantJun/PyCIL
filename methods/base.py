@@ -9,11 +9,11 @@ import torch.nn.functional as F
 from scipy.spatial.distance import cdist
 
 EPSILON = 1e-8
-batch_size = 64
+# batch_size = 64
 
 
 class BaseLearner(object):
-    def __init__(self, args):
+    def __init__(self, config):
         self._cur_task = -1
         self._known_classes = 0
         self._total_classes = 0
@@ -27,20 +27,20 @@ class BaseLearner(object):
         self.cnn_metric_curve = []
         self.nme_metric_curve = []
 
-        self._memory_size = args['memory_size']
-        self._fixed_memory = args['fixed_memory']
+        self._memory_size = config.memory_size
+        self._fixed_memory = config.fixed_memory
         if self._fixed_memory:
-            self._memory_per_class = args['memory_per_class']
-        self._multiple_gpus = list(range(len(args['device'].split(','))))
-        self._eval_metric = args['eval_metric']
+            self._memory_per_class = config.memory_per_class
+        self._multiple_gpus = list(range(len(config.device.split(','))))
+        self._eval_metric = config.eval_metric
 
-        self._epochs = args['epochs']
-        self._lrate = args['lrate']
-        self._milestones = args['milestones'] if 'milestones' in args else None
-        self._lrate_decay = args['lrate_decay'] if 'lrate_decay' in args else None
-        self._batch_size = args['batch_size']
-        self._weight_decay = args['weight_decay'] if 'weight_decay' in args else None
-        self._num_workers = args['num_workers']
+        self._epochs = config.epochs
+        self._lrate = config.lrate
+        self._milestones = config.milestones
+        self._lrate_decay = config.lrate_decay
+        self._batch_size = config.batch_size
+        self._weight_decay = config.weight_decay
+        self._num_workers = config.num_workers
 
     @property
     def exemplar_size(self):

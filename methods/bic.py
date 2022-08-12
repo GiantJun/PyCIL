@@ -6,7 +6,7 @@ from torch import optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from methods.base import BaseLearner
-from utils.inc_net import IncrementalNetWithBias
+from backbone.inc_net import IncrementalNetWithBias
 
 
 
@@ -23,13 +23,13 @@ from utils.inc_net import IncrementalNetWithBias
 
 
 class BiC(BaseLearner):
-    def __init__(self, args):
-        super().__init__(args)
-        self._network = IncrementalNetWithBias(args['backbone'], args['pretrained'], bias_correction=True)
+    def __init__(self, config):
+        super().__init__(config)
+        self._network = IncrementalNetWithBias(config.backbone, config.pretrained, bias_correction=True)
         self._class_means = None
 
-        self._T = args['T']
-        self._split_ratio = args['split_ratio']
+        self._T = config.T
+        self._split_ratio = config.split_ratio
 
     def after_task(self):
         self._old_network = self._network.copy().freeze()

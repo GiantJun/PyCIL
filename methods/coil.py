@@ -6,7 +6,7 @@ from torch import optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from methods.base import BaseLearner
-from utils.inc_net import IncrementalNet,CosineIncrementalNet,SimpleCosineIncrementalNet
+from backbone.inc_net import IncrementalNet,CosineIncrementalNet,SimpleCosineIncrementalNet
 from utils.toolkit import target2onehot, tensor2numpy
 # import ot
 from torch import nn
@@ -25,14 +25,14 @@ T = 2
 
 class COIL(BaseLearner):
 
-    def __init__(self, args):
-        super().__init__(args)
-        self._network = SimpleCosineIncrementalNet(args['convnet_type'], False)
+    def __init__(self, config):
+        super().__init__(config)
+        self._network = SimpleCosineIncrementalNet(config.convnet_type, False)
         self.data_manager=None
         self.nextperiod_initialization=None
-        self.sinkhorn_reg=args['sinkhorn']
-        self.calibration_term=args['calibration_term']
-        self.args=args
+        self.sinkhorn_reg=config.sinkhorn
+        self.calibration_term=config.calibration_term
+        self.args=config
 
     def after_task(self):
         self.nextperiod_initialization=self.solving_ot()

@@ -36,7 +36,7 @@ basic:
 special:
     incre_type: cil
     T: 2
-    lamda: 3
+    lamdba: 3
 
 ######### Experiment Settings for Datasets #########
 options:

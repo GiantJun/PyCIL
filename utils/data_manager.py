@@ -3,8 +3,30 @@ import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
-from utils.data import iCIFAR10, iCIFAR100, iImageNet100, iImageNet1000, iTinyImageNet200, Skin7, SD_198, Skin8, MyMedMnist
+from utils.datasets import iCIFAR10, iCIFAR100, iImageNet100, iImageNet1000, iTinyImageNet200, Skin7, SD_198, Skin8, MyMedMnist
 
+def get_idata(dataset_name):
+    name = dataset_name.lower()
+    if name == 'cifar10':
+        return iCIFAR10()
+    elif name == 'cifar100':
+        return iCIFAR100()
+    elif name == 'imagenet1000':
+        return iImageNet1000()
+    elif name == "imagenet100":
+        return iImageNet100()
+    elif name == "tinyimagenet":
+        return iTinyImageNet200()
+    elif name == "skin7":
+        return Skin7()
+    elif name == "skin8":
+        return Skin8()
+    elif name == "sd198" or name == 'skin40':
+        return SD_198()
+    elif name == "mymedmnist":
+        return MyMedMnist()
+    else:
+        raise NotImplementedError('Unknown dataset {}.'.format(dataset_name))
 
 class DataManager(object):
     def __init__(self, dataset_name, shuffle, seed, init_cls, increment):
@@ -15,7 +37,7 @@ class DataManager(object):
         increment: 每阶段增加类别的数量, 对于含子数据集的数据集无效
         """
         self.dataset_name = dataset_name
-        idata = _get_idata(dataset_name)
+        idata = get_idata(dataset_name)
         idata.download_data()
 
         # Data
@@ -38,8 +60,7 @@ class DataManager(object):
             if shuffle:
                 np.random.seed(seed)
                 order = np.random.permutation(len(order)).tolist()
-            else:
-                order = idata.class_order
+
             self._class_order = order
             logging.info('class order: {}'.format(self._class_order))
             assert init_cls <= len(self._class_order), 'No enough classes.'
@@ -195,30 +216,6 @@ def _map_new_class_index(y, order):
     return np.array(list(map(lambda x: order.index(x), y)))
 
 
-def _get_idata(dataset_name):
-    name = dataset_name.lower()
-    if name == 'cifar10':
-        return iCIFAR10()
-    elif name == 'cifar100':
-        return iCIFAR100()
-    elif name == 'imagenet1000':
-        return iImageNet1000()
-    elif name == "imagenet100":
-        return iImageNet100()
-    elif name == "tinyimagenet":
-        return iTinyImageNet200()
-    elif name == "skin7":
-        return Skin7()
-    elif name == "skin8":
-        return Skin8()
-    elif name == "sd198" or name == 'skin40':
-        return SD_198()
-    elif name == "mymedmnist":
-        return MyMedMnist()
-    else:
-        raise NotImplementedError('Unknown dataset {}.'.format(dataset_name))
-
-
 def pil_loader(path):
     '''
     Ref:
@@ -230,28 +227,28 @@ def pil_loader(path):
         return img.convert('RGB')
 
 
-def accimage_loader(path):
-    '''
-    Ref:
-    https://pytorch.org/docs/stable/_modules/torchvision/datasets/folder.html#ImageFolder
-    accimage is an accelerated Image loader and preprocessor leveraging Intel IPP.
-    accimage is available on conda-forge.
-    '''
-    import accimage
-    try:
-        return accimage.Image(path)
-    except IOError:
-        # Potentially a decoding problem, fall back to PIL.Image
-        return pil_loader(path)
+# def accimage_loader(path):
+#     '''
+#     Ref:
+#     https://pytorch.org/docs/stable/_modules/torchvision/datasets/folder.html#ImageFolder
+#     accimage is an accelerated Image loader and preprocessor leveraging Intel IPP.
+#     accimage is available on conda-forge.
+#     '''
+#     import accimage
+#     try:
+#         return accimage.Image(path)
+#     except IOError:
+#         # Potentially a decoding problem, fall back to PIL.Image
+#         return pil_loader(path)
 
 
-def default_loader(path):
-    '''
-    Ref:
-    https://pytorch.org/docs/stable/_modules/torchvision/datasets/folder.html#ImageFolder
-    '''
-    from torchvision import get_image_backend
-    if get_image_backend() == 'accimage':
-        return accimage_loader(path)
-    else:
-        return pil_loader(path)
+# def default_loader(path):
+#     '''
+#     Ref:
+#     https://pytorch.org/docs/stable/_modules/torchvision/datasets/folder.html#ImageFolder
+#     '''
+#     from torchvision import get_image_backend
+#     if get_image_backend() == 'accimage':
+#         return accimage_loader(path)
+#     else:
+#         return pil_loader(path)
