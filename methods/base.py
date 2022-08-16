@@ -3,23 +3,27 @@ import logging
 import numpy as np
 import torch
 from torch import nn
-from torch.utils.data import DataLoader
 from utils.toolkit import tensor2numpy, accuracy
-import torch.nn.functional as F
+from os.path import join
 from scipy.spatial.distance import cdist
+import logging
+from backbone.inc_net import IncrementalNet
+from utils.replayBank import ReplayBank
+from utils.toolkit import count_parameters
+from torch.utils.data import DataLoader
+from torch import optim
 
 EPSILON = 1e-8
 # batch_size = 64
 
 
 class BaseLearner(object):
-    def __init__(self, config):
+    def __init__(self, config, tblog):
         self._cur_task = -1
         self._known_classes = 0
         self._total_classes = 0
-        self._network = None
-        self._old_network = None
-        self._data_memory, self._targets_memory = np.array([]), np.array([])
+        self._config = copy.deepcopy(config)
+        self._network = IncrementalNet(config.backbone, config.pretrained)
 
         # 评价指标变化曲线
         self.cnn_task_metric_curve = None
@@ -27,12 +31,29 @@ class BaseLearner(object):
         self.cnn_metric_curve = []
         self.nme_metric_curve = []
 
+        self._tblog = tblog
+
+        self._method = config.method
+        self._incre_type = config.incre_type
+        self._dataset = config.dataset
+        self._backbone = config.backbone
+        self._seed = config.seed
+        self._save_models = config.save_models
+
         self._memory_size = config.memory_size
         self._fixed_memory = config.fixed_memory
+        self._sampling_method = config.sampling_method
         if self._fixed_memory:
             self._memory_per_class = config.memory_per_class
+        self._memory_bank = None
+        if self._memory_size != None and self._fixed_memory != None and self._sampling_method != None:
+            self._memory_bank = ReplayBank(self._config)
+            logging.info('Memory bank created!')
+
         self._multiple_gpus = list(range(len(config.device.split(','))))
         self._eval_metric = config.eval_metric
+        self._logdir = config.logdir
+        self._history_epochs = 0
 
         self._epochs = config.epochs
         self._lrate = config.lrate
@@ -42,43 +63,79 @@ class BaseLearner(object):
         self._weight_decay = config.weight_decay
         self._num_workers = config.num_workers
 
-    @property
-    def exemplar_size(self):
-        assert len(self._data_memory) == len(self._targets_memory), 'Exemplar size error.'
-        return len(self._targets_memory)
+        self._init_epochs = config.epochs if config.init_epochs == None else config.init_epochs
+        self._init_lrate = config.lrate if config.init_lrate == None else config.init_lrate
+        self._init_milestones = config.milestones if config.init_milestones == None else config.init_milestones
+        self._init_lrate_decay = config.lrate_decay if config.init_lrate_decay == None else config.init_lrate_decay
+        self._init_weight_decay = config.weight_decay if config.init_weight_decay == None else config.init_weight_decay
 
-    @property
-    def samples_per_class(self):
-        if self._fixed_memory:
-            return self._memory_per_class
+        self._criterion = nn.CrossEntropyLoss()
+        
+
+    def save_checkpoint(self, filename, model=None, state_dict=None):
+        save_path = join(self._logdir, filename)
+        if state_dict != None:
+            model_dict = state_dict
         else:
-            assert self._total_classes != 0, 'Total classes is 0'
-            return (self._memory_size // self._total_classes)
+            model_dict = model.state_dict()
+        save_dict = {'state_dict': model_dict}
+        save_dict.update(self._config.get_save_config())
+        torch.save(save_dict, save_path)
+        logging.info('model state dict saved at: {}'.format(save_path))
 
-    @property
-    def feature_dim(self):
-        if isinstance(self._network, nn.DataParallel):
-            return self._network.module.feature_dim
+
+    def _update_representation(self, train_loader, test_loader, optimizer, scheduler):
+        if self._cur_task == 0:
+            epochs = self._init_epochs
         else:
-            return self._network.feature_dim
+            epochs = self._epochs
+        for epoch in range(epochs):
+            self._network.train()
+            losses = 0.
+            correct, total = 0, 0
+            for i, (_, inputs, targets) in enumerate(train_loader):
+                inputs, targets = inputs.cuda(), targets.cuda()
 
-    def build_rehearsal_memory(self, data_manager, per_class):
-        if self._fixed_memory:
-            self._construct_exemplar_unified(data_manager, per_class)
-        else:
-            self._reduce_exemplar(data_manager, per_class)
-            self._construct_exemplar(data_manager, per_class)
+                if self._incre_type == 'til':
+                    logits = self._network.forward_til(inputs, self._cur_task)['logits']
+                    loss = self._criterion(logits, targets - self._known_classes)
+                    preds = torch.max(logits, dim=1)[1] + self._known_classes
+                else:
+                    logits = self._network(inputs)['logits']
+                    loss = self._criterion(logits, targets)
+                    preds = torch.max(logits, dim=1)[1]
 
-    def save_checkpoint(self, filename):
-        self._network.cpu()
-        save_dict = {
-            'tasks': self._cur_task,
-            'model_state_dict': self._network.state_dict(),
-        }
-        torch.save(save_dict, '{}_{}.pkl'.format(filename, self._cur_task))
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                losses += loss.item()
 
+                _, preds = torch.max(logits, dim=1)
+                correct += preds.eq(targets).cpu().sum()
+                total += len(targets)
+
+            scheduler.step()
+            train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
+            
+            test_acc = self._compute_accuracy(self._network, test_loader)
+            info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}, Test_accy {:.2f}'.format(
+            self._cur_task, epoch+1, epochs, losses/len(train_loader), train_acc, test_acc)
+            
+            self._tblog.add_scalar('seed{}_train/loss'.format(self._seed), losses/len(train_loader), self._history_epochs+epoch)
+            self._tblog.add_scalar('seed{}_train/acc'.format(self._seed), train_acc, self._history_epochs+epoch)
+            self._tblog.add_scalar('seed{}_test/acc'.format(self._seed), test_acc, self._history_epochs+epoch)
+            logging.info(info)
+        
+        self._history_epochs += epochs
+
+
+    # need to be overwrite probably
     def after_task(self):
-        pass
+        self._known_classes = self._total_classes
+        if self._save_models:
+            self.save_checkpoint('{}_{}_{}_task{}_seed{}.pkl'.format(
+                self._method, self._dataset, self._backbone, self._seed), 
+                self._network)
 
 
     def eval_task(self, data_manager):
@@ -86,7 +143,7 @@ class BaseLearner(object):
             self.cnn_task_metric_curve = [[] for i in range(data_manager.nb_tasks)]
             self.nme_task_metric_curve = [[] for i in range(data_manager.nb_tasks)]
 
-        cnn_pred, nme_pred, y_true = self._eval_cnn_nme(self.test_loader)
+        cnn_pred, nme_pred, y_true = self._eval_cnn_nme(self._network, self.test_loader)
         
         logging.info(50*"-")
         logging.info("log {} of every task".format(self._eval_metric))
@@ -119,17 +176,47 @@ class BaseLearner(object):
             logging.info(' ')
 
 
-    def incremental_train(self):
-        pass
+    # need to be overwrite probably, base is finetune
+    def incremental_train(self, data_manager):
+        self._cur_task += 1
+        self._total_classes = self._known_classes + data_manager.get_task_size(self._cur_task)
+        self._network.update_fc(self._total_classes)
+        logging.info('All params: {}'.format(count_parameters(self._network)))
+        logging.info('Trainable params: {}'.format(count_parameters(self._network, True)))
+        logging.info('Learning on {}-{}'.format(self._known_classes, self._total_classes))
 
-    def _train(self):
-        pass
-
-    def _get_memory(self):
-        if len(self._data_memory) == 0:
-            return None
+        if self._cur_task > 0 and self._memory_bank != None:
+            history_data, history_target, history_vectors = self._memory_bank.get_memory()
+            train_dataset = data_manager.get_dataset(np.arange(self._known_classes, self._total_classes), source='train',
+                                                 mode='train', appendent=(history_data, history_target))
         else:
-            return (self._data_memory, self._targets_memory)
+            train_dataset = data_manager.get_dataset(np.arange(self._known_classes, self._total_classes), source='train',
+                                                 mode='train')
+        self.train_loader = DataLoader(train_dataset, batch_size=self._batch_size, shuffle=True, num_workers=self._num_workers)
+        test_dataset = data_manager.get_dataset(np.arange(0, self._total_classes), source='test', mode='test')
+        self.test_loader = DataLoader(test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
+
+        if len(self._multiple_gpus) > 1:
+            self._network = nn.DataParallel(self._network, self._multiple_gpus)
+        self._train(self.train_loader, self.test_loader)
+        if len(self._multiple_gpus) > 1:
+            self._network = self._network.module
+        
+        if self._memory_bank != None:
+            self._memory_bank.store_samplers(data_manager, self._network, range(self._known_classes, self._total_classes))
+
+
+    # need to be overwrite probably, base is finetune
+    def _train(self, train_loader, test_loader):
+        self._network.cuda()
+        if self._cur_task==0:
+            optimizer = optim.SGD(filter(lambda p: p.requires_grad, self._network.parameters()), momentum=0.9,lr=self._init_lrate,weight_decay=self._init_weight_decay) 
+            scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=self._init_milestones, gamma=self._init_lrate_decay)            
+        else:
+            optimizer = optim.SGD(filter(lambda p: p.requires_grad, self._network.parameters()), lr=self._lrate, momentum=0.9, weight_decay=self._weight_decay)  # 1e-5
+            scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=self._milestones, gamma=self._lrate_decay)
+        self._update_representation(train_loader, test_loader, optimizer, scheduler)
+
 
     def _compute_accuracy(self, model, loader):
         model.eval()
@@ -144,165 +231,36 @@ class BaseLearner(object):
 
         return np.around(tensor2numpy(correct)*100 / total, decimals=2)
     
-    def _eval_cnn_nme(self, loader):
-        self._network.eval()
+
+    def _eval_cnn_nme(self, model, loader):
+        model.eval()
         cnn_pred, nme_pred, y_true = [], [], []
         for _, (_, inputs, targets) in enumerate(loader):
             inputs = inputs.cuda()
             with torch.no_grad():
-                outputs = self._network(inputs)
+                outputs = model(inputs)
             cnn_predicts = torch.argmax(outputs['logits'], dim=1)
             cnn_pred.append(tensor2numpy(cnn_predicts))
-            if hasattr(self, '_class_means'):
-                vectors = tensor2numpy(outputs['features'])
-                vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
-                scores = cdist(vectors, self._class_means)
-                nme_predicts = np.argmin(scores, axis=1)
-                nme_pred.append(nme_predicts)
+            if self._memory_bank != None:
+                nme_predicts = self._memory_bank.KNN_classify(outputs['features'])
+                nme_pred.append(tensor2numpy(nme_predicts))
             y_true.append(targets)
 
         return np.concatenate(cnn_pred), np.concatenate(nme_pred) if len(nme_pred)!=0 else nme_pred, \
                 np.concatenate(y_true)  # [N, topk]
 
-    def _extract_vectors(self, loader):
-        self._network.eval()
+
+    def _extract_vectors(self, model, loader):
+        model.eval()
         vectors, targets = [], []
         for _, _inputs, _targets in loader:
             _targets = _targets.numpy()
-            if isinstance(self._network, nn.DataParallel):
-                _vectors = tensor2numpy(self._network.module.extract_vector(_inputs.cuda()))
+            if isinstance(model, nn.DataParallel):
+                _vectors = tensor2numpy(model.module.extract_vector(_inputs.cuda()))
             else:
-                _vectors = tensor2numpy(self._network.extract_vector(_inputs.cuda()))
+                _vectors = tensor2numpy(model.extract_vector(_inputs.cuda()))
 
             vectors.append(_vectors)
             targets.append(_targets)
 
         return np.concatenate(vectors), np.concatenate(targets)
-
-    def _reduce_exemplar(self, data_manager, m):
-        logging.info('Reducing exemplars...({} per classes)'.format(m))
-        dummy_data, dummy_targets = copy.deepcopy(self._data_memory), copy.deepcopy(self._targets_memory)
-        self._class_means = np.zeros((self._total_classes, self.feature_dim))
-        self._data_memory, self._targets_memory = np.array([]), np.array([])
-
-        for class_idx in range(self._known_classes):
-            mask = np.where(dummy_targets == class_idx)[0]
-            dd, dt = dummy_data[mask][:m], dummy_targets[mask][:m]
-            self._data_memory = np.concatenate((self._data_memory, dd)) if len(self._data_memory) != 0 else dd
-            self._targets_memory = np.concatenate((self._targets_memory, dt)) if len(self._targets_memory) != 0 else dt
-
-            # Exemplar mean
-            idx_dataset = data_manager.get_dataset([], source='train', mode='test', appendent=(dd, dt))
-            idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-            vectors, _ = self._extract_vectors(idx_loader)
-            vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
-            mean = np.mean(vectors, axis=0)
-            mean = mean / np.linalg.norm(mean)
-
-            self._class_means[class_idx, :] = mean
-
-    def _construct_exemplar(self, data_manager, m):
-        logging.info('Constructing exemplars...({} per classes)'.format(m))
-        for class_idx in range(self._known_classes, self._total_classes):
-            data, targets, idx_dataset = data_manager.get_dataset(np.arange(class_idx, class_idx+1), source='train',
-                                                                  mode='test', ret_data=True)
-            idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-            vectors, _ = self._extract_vectors(idx_loader)
-            vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
-            class_mean = np.mean(vectors, axis=0)
-
-            # Select
-            selected_exemplars = []
-            exemplar_vectors = []  # [n, feature_dim]
-            for k in range(1, m+1):
-                S = np.sum(exemplar_vectors, axis=0)  # [feature_dim] sum of selected exemplars vectors
-                mu_p = (vectors + S) / k  # [n, feature_dim] sum to all vectors
-                i = np.argmin(np.sqrt(np.sum((class_mean - mu_p) ** 2, axis=1)))
-                selected_exemplars.append(np.array(data[i]))  # New object to avoid passing by inference
-                exemplar_vectors.append(np.array(vectors[i]))  # New object to avoid passing by inference
-
-                vectors = np.delete(vectors, i, axis=0)  # Remove it to avoid duplicative selection
-                data = np.delete(data, i, axis=0)  # Remove it to avoid duplicative selection
-
-            # uniques = np.unique(selected_exemplars, axis=0)
-            # print('Unique elements: {}'.format(len(uniques)))
-            selected_exemplars = np.array(selected_exemplars)
-            exemplar_targets = np.full(m, class_idx)
-            self._data_memory = np.concatenate((self._data_memory, selected_exemplars)) if len(self._data_memory) != 0 \
-                else selected_exemplars
-            self._targets_memory = np.concatenate((self._targets_memory, exemplar_targets)) if \
-                len(self._targets_memory) != 0 else exemplar_targets
-
-            # Exemplar mean
-            idx_dataset = data_manager.get_dataset([], source='train', mode='test',
-                                                   appendent=(selected_exemplars, exemplar_targets))
-            idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-            vectors, _ = self._extract_vectors(idx_loader)
-            vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
-            mean = np.mean(vectors, axis=0)
-            mean = mean / np.linalg.norm(mean)
-
-            self._class_means[class_idx, :] = mean
-
-    def _construct_exemplar_unified(self, data_manager, m):
-        logging.info('Constructing exemplars for new classes...({} per classes)'.format(m))
-        _class_means = np.zeros((self._total_classes, self.feature_dim))
-
-        # Calculate the means of old classes with newly trained network
-        for class_idx in range(self._known_classes):
-            mask = np.where(self._targets_memory == class_idx)[0]
-            class_data, class_targets = self._data_memory[mask], self._targets_memory[mask]
-
-            class_dset = data_manager.get_dataset([], source='train', mode='test',
-                                                  appendent=(class_data, class_targets))
-            class_loader = DataLoader(class_dset, batch_size=batch_size, shuffle=False, num_workers=4)
-            vectors, _ = self._extract_vectors(class_loader)
-            vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
-            mean = np.mean(vectors, axis=0)
-            mean = mean / np.linalg.norm(mean)
-
-            _class_means[class_idx, :] = mean
-
-        # Construct exemplars for new classes and calculate the means
-        for class_idx in range(self._known_classes, self._total_classes):
-            data, targets, class_dset = data_manager.get_dataset(np.arange(class_idx, class_idx+1), source='train',
-                                                                 mode='test', ret_data=True)
-            class_loader = DataLoader(class_dset, batch_size=batch_size, shuffle=False, num_workers=4)
-
-            vectors, _ = self._extract_vectors(class_loader)
-            vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
-            class_mean = np.mean(vectors, axis=0)
-
-            # Select
-            selected_exemplars = []
-            exemplar_vectors = []
-            for k in range(1, m+1):
-                S = np.sum(exemplar_vectors, axis=0)  # [feature_dim] sum of selected exemplars vectors
-                mu_p = (vectors + S) / k  # [n, feature_dim] sum to all vectors
-                i = np.argmin(np.sqrt(np.sum((class_mean - mu_p) ** 2, axis=1)))
-
-                selected_exemplars.append(np.array(data[i]))  # New object to avoid passing by inference
-                exemplar_vectors.append(np.array(vectors[i]))  # New object to avoid passing by inference
-
-                vectors = np.delete(vectors, i, axis=0)  # Remove it to avoid duplicative selection
-                data = np.delete(data, i, axis=0)  # Remove it to avoid duplicative selection
-
-            selected_exemplars = np.array(selected_exemplars)
-            exemplar_targets = np.full(m, class_idx)
-            self._data_memory = np.concatenate((self._data_memory, selected_exemplars)) if len(self._data_memory) != 0 \
-                else selected_exemplars
-            self._targets_memory = np.concatenate((self._targets_memory, exemplar_targets)) if \
-                len(self._targets_memory) != 0 else exemplar_targets
-
-            # Exemplar mean
-            exemplar_dset = data_manager.get_dataset([], source='train', mode='test',
-                                                     appendent=(selected_exemplars, exemplar_targets))
-            exemplar_loader = DataLoader(exemplar_dset, batch_size=batch_size, shuffle=False, num_workers=4)
-            vectors, _ = self._extract_vectors(exemplar_loader)
-            vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
-            mean = np.mean(vectors, axis=0)
-            mean = mean / np.linalg.norm(mean)
-
-            _class_means[class_idx, :] = mean
-
-        self._class_means = _class_means

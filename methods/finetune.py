@@ -2,7 +2,6 @@ import logging
 import numpy as np
 import torch
 from torch import nn
-from torch.serialization import load
 from tqdm import tqdm
 from torch import optim
 from torch.nn import functional as F
@@ -10,7 +9,7 @@ from torch.utils.data import DataLoader
 from backbone.inc_net import IncrementalNet
 from methods.base import BaseLearner
 from utils.toolkit import target2onehot, tensor2numpy
-
+from utils.toolkit import count_parameters
 
 # init_epoch=200
 # init_lr=0.1
@@ -35,10 +34,10 @@ class Finetune(BaseLearner):
         super().__init__(config)
         self._network = IncrementalNet(config.backbone, config.pretrained)
         
-        self._init_epoch = config.init_epoch
-        self._init_lr = config.init_lr
+        self._init_epoch = config.init_epochs
+        self._init_lr = config.init_lrate
         self._init_milestones = config.init_milestones
-        self._init_lr_decay = config.init_lr_decay
+        self._init_lr_decay = config.init_lrate_decay
         self._init_weight_decay = config.init_weight_decay
 
     def after_task(self):
@@ -48,6 +47,8 @@ class Finetune(BaseLearner):
         self._cur_task += 1
         self._total_classes = self._known_classes + data_manager.get_task_size(self._cur_task)
         self._network.update_fc(self._total_classes)
+        logging.info('All params: {}'.format(count_parameters(self._network)))
+        logging.info('Trainable params: {}'.format(count_parameters(self._network, True)))
         logging.info('Learning on {}-{}'.format(self._known_classes, self._total_classes))
 
         train_dataset = data_manager.get_dataset(np.arange(self._known_classes, self._total_classes), source='train',
@@ -67,50 +68,18 @@ class Finetune(BaseLearner):
         if self._cur_task==0:
             optimizer = optim.SGD(self._network.parameters(), momentum=0.9,lr=self._init_lr,weight_decay=self._init_weight_decay) 
             scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=self._init_milestones, gamma=self._init_lr_decay)            
-            self._init_train(train_loader,test_loader,optimizer,scheduler)
         else:
             optimizer = optim.SGD(self._network.parameters(), lr=self._lrate, momentum=0.9, weight_decay=self._weight_decay)  # 1e-5
             scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=self._milestones, gamma=self._lrate_decay)
-            self._update_representation(train_loader, test_loader, optimizer, scheduler)
-
-    def _init_train(self,train_loader,test_loader,optimizer,scheduler):
-        prog_bar = tqdm(range(self._init_epoch))
-        for _, epoch in enumerate(prog_bar):
-            self._network.train()
-            losses = 0.
-            correct, total = 0, 0
-            for i, (_, inputs, targets) in enumerate(train_loader):
-                inputs, targets = inputs.cuda(), targets.cuda()
-                logits = self._network(inputs)['logits']
-
-                loss=F.cross_entropy(logits,targets) 
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                losses += loss.item()
-
-                _, preds = torch.max(logits, dim=1)
-                correct += preds.eq(targets.expand_as(preds)).cpu().sum()
-                total += len(targets)
-
-            scheduler.step()
-            train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
-
-            if epoch%5==0:
-                info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}'.format(
-                self._cur_task, epoch+1, self._init_epoch, losses/len(train_loader), train_acc)
-            else:
-                test_acc = self._compute_accuracy(self._network, test_loader)
-                info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}, Test_accy {:.2f}'.format(
-                self._cur_task, epoch+1, self._init_epoch, losses/len(train_loader), train_acc, test_acc)
-            prog_bar.set_description(info)
-
-        logging.info(info)
+        self._update_representation(train_loader, test_loader, optimizer, scheduler)
 
 
     def _update_representation(self, train_loader, test_loader, optimizer, scheduler):
-
-        prog_bar = tqdm(range(self._epochs))
+        if self._cur_task == 0:
+            epochs = self._init_epoch
+        else:
+            epochs = self._epochs
+        prog_bar = tqdm(range(epochs))
         for _, epoch in enumerate(prog_bar):
             self._network.train()
             losses = 0.
@@ -139,9 +108,9 @@ class Finetune(BaseLearner):
             if epoch%5==0:
                 test_acc = self._compute_accuracy(self._network, test_loader)
                 info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}, Test_accy {:.2f}'.format(
-                self._cur_task, epoch+1, self._epochs, losses/len(train_loader), train_acc, test_acc)
+                self._cur_task, epoch+1, epochs, losses/len(train_loader), train_acc, test_acc)
             else:
                 info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}'.format(
-                self._cur_task, epoch+1, self._epochs, losses/len(train_loader), train_acc)
+                self._cur_task, epoch+1, epochs, losses/len(train_loader), train_acc)
             prog_bar.set_description(info)
         logging.info(info)

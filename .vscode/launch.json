@@ -11,7 +11,7 @@
             "program": "main.py",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["--config","options/icarl.yaml"]
+            "args": ["--config","options/finetune_replay.yaml"]
         }
     ]
 }

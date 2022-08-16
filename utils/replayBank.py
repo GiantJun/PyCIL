@@ -129,7 +129,7 @@ class ReplayBank:
         for class_idx, class_samples in enumerate(self._data_memory):
             target.append(np.full(len(class_samples), class_idx))
 
-        logging.info('Replay stored samples info: stored_class={} , per_class={} , total={}'.format(
+        logging.info('Replay stored samples info: stored_class={} , samples_per_class={} , total={}'.format(
                                                 len(target),len(target[0]), len(target)*len(target[0])))
         
         return np.concatenate(self._data_memory), np.concatenate(target), np.concatenate(self._vector_memory)

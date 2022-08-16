@@ -1,6 +1,7 @@
 import copy
 import torch
 from torch import nn
+import logging
 from backbone.cifar_resnet import resnet32
 from backbone.resnet import resnet18, resnet34, resnet50
 from backbone.ucir_cifar_resnet import resnet32 as cosine_resnet32
@@ -12,25 +13,27 @@ from backbone.linears import SimpleLinear, SplitCosineLinear, CosineLinear
 
 def get_convnet(convnet_type, pretrained=False):
     name = convnet_type.lower()
+    net = None
     if name == 'resnet32':
-        return resnet32()
+        net = resnet32()
     elif name == 'resnet18':
-        return resnet18(pretrained=pretrained)
+        net = resnet18(pretrained=pretrained)
     elif name == 'resnet34':
-        return resnet34(pretrained=pretrained)
+        net = resnet34(pretrained=pretrained)
     elif name == 'resnet50':
-        return resnet50(pretrained=pretrained)
+        net = resnet50(pretrained=pretrained)
     elif name == 'cosine_resnet18':
-        return cosine_resnet18(pretrained=pretrained)
+        net = cosine_resnet18(pretrained=pretrained)
     elif name == 'cosine_resnet32':
-        return cosine_resnet32()
+        net = cosine_resnet32()
     elif name == 'cosine_resnet34':
-        return cosine_resnet34(pretrained=pretrained)
+        net = cosine_resnet34(pretrained=pretrained)
     elif name == 'cosine_resnet50':
-        return cosine_resnet50(pretrained=pretrained)
+        net = cosine_resnet50(pretrained=pretrained)
     else:
         raise NotImplementedError('Unknown type {}'.format(convnet_type))
-
+    logging.info('Created {} !'.format(name))
+    return net
 
 class BaseNet(nn.Module):
 
@@ -39,6 +42,7 @@ class BaseNet(nn.Module):
 
         self.convnet = get_convnet(convnet_type, pretrained)
         self.fc = None
+        self.fc_til = None
 
     @property
     def feature_dim(self):
@@ -95,9 +99,18 @@ class IncrementalNet(BaseNet):
             bias = copy.deepcopy(self.fc.bias.data)
             fc.weight.data[:nb_output] = weight
             fc.bias.data[:nb_output] = bias
+            logging.info('Updated classifier head output dim from {} to {}'.format(nb_output, nb_classes))
+        else:
+            logging.info('Created classifier head with output dim {}'.format(nb_classes))
 
         del self.fc
         self.fc = fc
+    
+    def update_til_fc(self, nb_classes):
+        if self.fc_til == None:
+            self.fc_til = nn.ModuleList([])
+        self.fc_til.append(self.generate_fc(self.feature_dim, nb_classes))
+
     def weight_align(self, increment):
         weights=self.fc.weight.data
         newnorm=(torch.norm(weights[-increment:,:],p=2,dim=1))
@@ -116,6 +129,16 @@ class IncrementalNet(BaseNet):
     def forward(self, x):
         x = self.convnet(x)
         out = self.fc(x['features'])
+        out.update(x)
+        if hasattr(self, 'gradcam') and self.gradcam:
+            out['gradcam_gradients'] = self._gradcam_gradients
+            out['gradcam_activations'] = self._gradcam_activations
+
+        return out
+    
+    def forward_til(self, x, task_id):
+        x = self.convnet(x)
+        out = self.fc_til[task_id](x['features'])
         out.update(x)
         if hasattr(self, 'gradcam') and self.gradcam:
             out['gradcam_gradients'] = self._gradcam_gradients

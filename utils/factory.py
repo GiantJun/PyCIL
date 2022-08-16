@@ -1,39 +1,36 @@
 from methods.coil import COIL
 from methods.der import DER
 from methods.ewc import EWC
-from methods.finetune import Finetune
+from methods.base import BaseLearner
 from methods.gem import GEM
 from methods.icarl import iCaRL
 from methods.lwf import LwF
-from methods.finetune_replay import Replay
 from methods.bic import BiC
 from methods.podnet import PODNet
 from methods.wa import WA
 
 
-def get_trainer(config):
+def get_trainer(config, tblog):
     name = config.method.lower()
-    if name == 'icarl':
-        return iCaRL(config)
+    if name == 'finetune':
+        return BaseLearner(config, tblog)
+    elif name == 'icarl':
+        return iCaRL(config, tblog)
     elif name == 'bic':
-        return BiC(config)
+        return BiC(config, tblog)
     elif name == 'podnet':
-        return PODNet(config)
+        return PODNet(config, tblog)
     elif name == "lwf":
-        return LwF(config)
+        return LwF(config, tblog)
     elif name == "ewc":
-        return EWC(config)
+        return EWC(config, tblog)
     elif name == "wa":
-        return WA(config)
+        return WA(config, tblog)
     elif name == "der":
-        return DER(config)
-    elif name == "finetune":
-        return Finetune(config)
-    elif name == "finetune_replay":
-        return Replay(config)
+        return DER(config, tblog)
     elif name == "gem":
-        return GEM(config)
+        return GEM(config, tblog)
     elif name == "coil":
-        return COIL(config)
+        return COIL(config, tblog)
     else:
         assert 0

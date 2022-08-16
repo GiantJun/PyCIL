@@ -10,8 +10,9 @@ def load_yaml(settings_path):
     args.update(param['basic'])
     if not 'test' in args['method']: # 测试不需要指定训练参数
         dataset = args['dataset']
+        backbone = args['backbone']
         if 'options' in param:
-            args.update(param['options'][dataset])
+            args.update(param['options'][dataset][backbone])
     if 'special' in param:
         args.update(param['special'])
     return args
@@ -22,18 +23,21 @@ class Config:
         parser = argparse.ArgumentParser(description='Reproduce of multiple continual learning algorthms.')
         parser.add_argument('--config', type=str, default=None, help='yaml file of settings.')
 
-        self.overwrite_names = []
         # basic config
         self.basic_config_names = ['device', 'seed', 'num_workers', 'dataset', 'split_for_valid', 'backbone', 'method', 'pretrained',
             'incre_type', 'pretrained', 'pretrain_path', 'freeze', 'save_models', 'eval_metric', 'init_cls', 'increment']
         self.special_config_names = ['T', 'memory_size', 'fixed_memory', 'sampling_method', 'split_ratio', 'lambda',
             'fishermax', 'lambda_c_base', 'lambda_f_base', 'nb_proxy', 'ft_epochs', 'ft_lrate']
 
+        self.init_overwrite_names = []
+        self.load_overwrite_names = []
+
         parser.add_argument('--device', nargs='+', type=int, default=None, help='GPU ids, e.g. 0 (for single gpu) or 0 1 2 (for multi gpus)')
         parser.add_argument('--seed', nargs='+', type=int, default=None, help='random seed for the programe, 0 (for single seed) or 0 1 2 (run in seed 0 1 2 respectively)')
         parser.add_argument('--num_workers', type=int, default=None, help='CPUs for dataloader')
         
         parser.add_argument('--dataset', type=str, default=None, help='dataset to be used')
+        parser.add_argument('--shuffle', type=str, default=None, help='shuffle class order')
         parser.add_argument('--split_for_valid', type=bool, default=None, help='whether to split training set to true training set and valid set') # 赋初值为 None 相当于 False
         
         parser.add_argument('--backbone', type=str, default=None, help='backbone to train')
@@ -49,6 +53,23 @@ class Config:
 
         parser.add_argument('--init_cls', type=str, default=None, help='init class num for the training')
         parser.add_argument('--increment', type=str, default=None, help='increment class num for the training')
+
+        # training config
+        parser.add_argument('--init_epochs', type=int, default=None, help='init training epochs')
+        parser.add_argument('--init_lrate', type=float, default=None, help='init training learning rate')
+        parser.add_argument('--init_milestones', type=int, default=None, help='init milestones for training')
+        parser.add_argument('--init_lrate_decay', type=float, default=None, help='init training learning rate decay')
+        parser.add_argument('--init_weight_decay', type=int, default=None, help='init weight decay for training')
+
+        parser.add_argument('--epochs', type=int, default=None, help='training epochs')
+        parser.add_argument('--batch_size', type=int, default=None, help='batch size for training')
+        parser.add_argument('--lrate', type=float, default=None, help='training learning rate')
+        parser.add_argument('--opt_type', type=str, default=None, help='optimizer for training')
+        parser.add_argument('--weight_decay', type=float, default=None, help='weight decay for sgd')
+        parser.add_argument('--scheduler', type=str, default=None, help='learning rate decay method')
+        parser.add_argument('--milestones', nargs='+', type=int, default=None, help='for multi step learning rate decay scheduler')
+        parser.add_argument('--lrate_decay', type=float, default=None, help='for multi step learning rate decay scheduler')
+        parser.add_argument('--criterion', type=str, default=None, help='loss function, e.g. ce, focal')
 
         # special config
         parser.add_argument('--T', type=float, default=None, help='tempreture apply to the output logits befor softmax')
@@ -69,20 +90,8 @@ class Config:
         parser.add_argument('--ft_epochs', type=int, default=None, help='ft_epochs for podnet') # podnet
         parser.add_argument('--ft_lrate', type=float, default=None, help='ft_lrate for podnet') # podnet
 
-        # training config
-        parser.add_argument('--init_epochs', type=int, default=None, help='init training epochs')
-        parser.add_argument('--init_batch_size', type=int, default=None, help='init batch size for training')
-        parser.add_argument('--init_lrate', type=float, default=None, help='init training learning rate')
-
-        parser.add_argument('--epochs', type=int, default=None, help='training epochs')
-        parser.add_argument('--batch_size', type=int, default=None, help='batch size for training')
-        parser.add_argument('--lrate', type=float, default=None, help='training learning rate')
-        parser.add_argument('--opt_type', type=str, default=None, help='optimizer for training')
-        parser.add_argument('--weight_decay', type=float, default=None, help='weight decay for sgd')
-        parser.add_argument('--scheduler', type=str, default=None, help='learning rate decay method')
-        parser.add_argument('--milestones', nargs='+', type=int, default=None, help='for multi step learning rate decay scheduler')
-        parser.add_argument('--lrate_decay', type=float, default=None, help='for multi step learning rate decay scheduler')
-        parser.add_argument('--criterion', type=str, default=None, help='loss function, e.g. ce, focal')
+        # multi-bn
+        parser.add_argument('--multi_bn_type', type=str, default=None, help='different type of multi-bn, e.g. default,last,first,pretrained')
 
         for name, value in vars(parser.parse_args()).items():
             setattr(self, name, value)
@@ -92,7 +101,7 @@ class Config:
             for name, value in init_config.items():
                 if getattr(self, name) == None:
                     setattr(self, name, value)
-                    self.overwrite_names.append(name)
+                    self.init_overwrite_names.append(name)
             print('Loaded config file: {}'.format(self.config))
     
     def get_save_config(self) -> dict:
@@ -109,7 +118,7 @@ class Config:
         for key, value in init_dict.items():
             if (not hasattr(self,key)) or getattr(self, key) == None:
                 setattr(self, key, value)
-                self.overwrite_names.append(key)
+                self.load_overwrite_names.append(key)
                 
         if 'test' in self.method: # 包含 test emsemble_test_avg, emsemble_test_vote
             self.kfold = 1
@@ -131,8 +140,9 @@ class Config:
         logging.info("log hyperparameters in seed {}".format(self.seed))
         logging.info(30*"-")
         for name, value in vars(self).items():
-            if not name in ['basic_config_names', 'special_config_names', 'overwrite_names'] and not getattr(self, name) == None:
+            if not name in ['basic_config_names', 'special_config_names', 'init_overwrite_names', 'load_overwrite_names'] and not getattr(self, name) == None:
                 logging.info('{}: {}'.format(name, value))
         logging.info(30*"=")
-        logging.info('overwrite configs : {}'.format(self.overwrite_names))
+        logging.info('Inital configs overwrited by yaml config file: {}'.format(self.init_overwrite_names))
+        logging.info('Inital configs overwrited by loaded pkl configs: {}'.format(self.load_overwrite_names))
         

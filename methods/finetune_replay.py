@@ -34,10 +34,10 @@ class Replay(BaseLearner):
         super().__init__(config)
         self._network = IncrementalNet(config.backbone, config.pretrained)
 
-        self._init_epoch = config.init_epoch
-        self._init_lr = config.init_lr
+        self._init_epoch = config.init_epochs
+        self._init_lr = config.init_lrate
         self._init_milestones = config.init_milestones
-        self._init_lr_decay = config.init_lr_decay
+        self._init_lr_decay = config.init_lrate_decay
         self._init_weight_decay = config.init_weight_decay
 
     def after_task(self):

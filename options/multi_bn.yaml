@@ -2,7 +2,7 @@
 basic:
     device: '3'
     seed: [1993] # icarl 官方代码给的种子是 1993
-    num_workers: 8
+    num_workers: 4
 
     # Dataset Choises: cifar100, cifar100, imagenet100, imagenet1000, tinyimagenet,
     # skin7, sd198(also known as skin40), mymedmnist
@@ -10,8 +10,7 @@ basic:
     shuffle: true
 
     # Method Choises: icarl, end2end, dr, ucir, bic, lwm, podnet, mas, joint， finetune
-    method: finetune
-    incre_type: cil
+    method: multi_bn
     # eval_metric Choises: acc, recall
     eval_metric: acc
 
@@ -21,6 +20,11 @@ basic:
     pretrained: false
     save_models: false # if true, programm will save model's weights during incremental train
 
+    ######### Exampler Hyperparameters #########
+    memory_size: 2000
+    fixed_memory: false
+    sampling_method: icarl # icarl, random, closest_to_mean 
+
     ######### Task Settings, unimportant in Joint #########
     # for some datasets(e.g. MedMNist), this will be ignored
     init_cls: 10
@@ -28,15 +32,15 @@ basic:
 
 
 ######### Method's Hyperparameters #########
-# special:
-    
+special:
+    incre_type: cil
 
 ######### Experiment Settings for Datasets #########
 options:
     # experiment settings for cifar100
     cifar100: 
         resnet32:             
-            init_epochs: 20
+            init_epochs: 200
             init_lrate: 0.1
             init_milestones: [60,120,160]
             init_lrate_decay: 0.1

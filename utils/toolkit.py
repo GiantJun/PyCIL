@@ -55,19 +55,22 @@ def split_images_labels(imgs):
     return np.array(images), np.array(labels)
 
 def set_logger(config, ret_tblog=True) -> SummaryWriter:
-    os.makedirs("logs/{}".format(config.method))
-    nowTime = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-    logfilename = 'logs/{}/{}_{}_{}_{}_{}_{}_{}_{}.log'.format(config.method, config.prefix, config.seed, config.method, config.backbone,
-                                                config.dataset, config.init_cls, config.increment, nowTime)
+    nowTime = datetime.datetime.now().strftime('_%Y-%m-%d-%H-%M-%S')
+    logdir = 'logs/{}/{}/{}_b{}i{}'.format(config.method, config.dataset, config.backbone, config.init_cls, config.increment)
+    if os.path.exists(logdir):
+        logdir = logdir + nowTime
+    check_makedirs(logdir)
+    config.update({'logdir':logdir})
+
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s [%(filename)s] => %(message)s',
         handlers=[
-            logging.FileHandler(filename=logfilename),
+            logging.FileHandler(filename=os.path.join(logdir, '{}.log'.format(config.method)), mode='w'),
             logging.StreamHandler(sys.stdout)
         ]
     )
-    logdir = 'logs/{}'.format(config.method)
+    
     if ret_tblog:
         return SummaryWriter(logdir)
     else:

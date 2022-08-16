@@ -1,7 +1,6 @@
 ######### Basic Settings #########
 basic:
-    prefix: reproduce
-    device: ['1']
+    device: '3'
     seed: [1993] # icarl 官方代码给的种子是 1993
     num_workers: 4
 
@@ -11,7 +10,7 @@ basic:
     shuffle: true
 
     # Method Choises: icarl, end2end, dr, ucir, bic, lwm, podnet, mas, joint， finetune
-    method: finetune_replay
+    method: finetune
     incre_type: cil
     # eval_metric Choises: acc, recall
     eval_metric: acc
@@ -22,6 +21,11 @@ basic:
     pretrained: false
     save_models: false # if true, programm will save model's weights during incremental train
 
+    ######### Exampler Hyperparameters #########
+    memory_size: 2000
+    fixed_memory: false
+    sampling_method: random # icarl, random, closest_to_mean 
+
     ######### Task Settings, unimportant in Joint #########
     # for some datasets(e.g. MedMNist), this will be ignored
     init_cls: 10
@@ -29,26 +33,23 @@ basic:
 
 
 ######### Method's Hyperparameters #########
-special:
-    ######### Exampler Hyperparameters #########
-    memory_size: 2000
-    fixed_memory: false
-    sampling_method: icarl # icarl, random, closest_to_mean
+# special:
+    
 
 ######### Experiment Settings for Datasets #########
 options:
     # experiment settings for cifar100
     cifar100: 
         resnet32:             
-            init_epoch: 200
-            init_lr: 0.1
+            init_epochs: 200
+            init_lrate: 0.1
             init_milestones: [60,120,160]
-            init_lr_decay: 0.1
+            init_lrate_decay: 0.1
             init_weight_decay: 0.0005
 
             epochs: 70
             lrate: 0.1
-            milestones: [30, 50]
+            milestones: [40, 70]
             lrate_decay: 0.1
             batch_size: 128
             weight_decay: 0.0002
