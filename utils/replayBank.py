@@ -124,7 +124,7 @@ class ReplayBank:
         nme_predicts = torch.argmin(dists, dim=1)
         return nme_predicts
 
-    def get_memory(self):
+    def get_memory(self, ret_vectors=False):
         target= []
         for class_idx, class_samples in enumerate(self._data_memory):
             target.append(np.full(len(class_samples), class_idx))
@@ -132,8 +132,12 @@ class ReplayBank:
         logging.info('Replay stored samples info: stored_class={} , samples_per_class={} , total={}'.format(
                                                 len(target),len(target[0]), len(target)*len(target[0])))
         
-        return np.concatenate(self._data_memory), np.concatenate(target), np.concatenate(self._vector_memory)
+        if ret_vectors:
+            return np.concatenate(self._data_memory), np.concatenate(target), np.concatenate(self._vector_memory)
+        else:
+            return np.concatenate(self._data_memory), np.concatenate(target)
 
+            
     def _extract_vectors(self, model, loader):
         model.eval()
         vectors, targets = [], []

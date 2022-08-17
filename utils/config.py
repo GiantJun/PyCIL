@@ -57,6 +57,7 @@ class Config:
         # training config
         parser.add_argument('--init_epochs', type=int, default=None, help='init training epochs')
         parser.add_argument('--init_lrate', type=float, default=None, help='init training learning rate')
+        parser.add_argument('--init_scheduler', type=str, default=None, help='init learning rate decay method')
         parser.add_argument('--init_milestones', type=int, default=None, help='init milestones for training')
         parser.add_argument('--init_lrate_decay', type=float, default=None, help='init training learning rate decay')
         parser.add_argument('--init_weight_decay', type=int, default=None, help='init weight decay for training')

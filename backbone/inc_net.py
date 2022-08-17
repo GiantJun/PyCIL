@@ -3,7 +3,7 @@ import torch
 from torch import nn
 import logging
 from backbone.cifar_resnet import resnet32
-from backbone.resnet import resnet18, resnet34, resnet50
+import torchvision.models as torch_models
 from backbone.ucir_cifar_resnet import resnet32 as cosine_resnet32
 from backbone.ucir_resnet import resnet18 as cosine_resnet18
 from backbone.ucir_resnet import resnet34 as cosine_resnet34
@@ -11,17 +11,13 @@ from backbone.ucir_resnet import resnet50 as cosine_resnet50
 from backbone.linears import SimpleLinear, SplitCosineLinear, CosineLinear
 
 
-def get_convnet(convnet_type, pretrained=False):
+def get_convnet(convnet_type, pretrained=False, pretrain_path=None):
     name = convnet_type.lower()
     net = None
-    if name == 'resnet32':
+    if name in torch_models.__dict__.keys():
+        net = torch_models.__dict__[name](pretrained=pretrained)
+    elif name == 'resnet32':
         net = resnet32()
-    elif name == 'resnet18':
-        net = resnet18(pretrained=pretrained)
-    elif name == 'resnet34':
-        net = resnet34(pretrained=pretrained)
-    elif name == 'resnet50':
-        net = resnet50(pretrained=pretrained)
     elif name == 'cosine_resnet18':
         net = cosine_resnet18(pretrained=pretrained)
     elif name == 'cosine_resnet32':
@@ -33,6 +29,20 @@ def get_convnet(convnet_type, pretrained=False):
     else:
         raise NotImplementedError('Unknown type {}'.format(convnet_type))
     logging.info('Created {} !'.format(name))
+
+    # 载入自定义预训练模型
+    if pretrain_path != None and pretrained:
+        pretrained_dict = torch.load(pretrain_path)
+        if 'state_dict' in pretrained_dict.keys():
+            pretrained_dict = torch.load(pretrain_path)['state_dict']
+        state_dict = net.state_dict()
+        logging.info('special keys in load model state dict: {}'.format(pretrained_dict.keys()-state_dict.keys()))
+        for key in (pretrained_dict.keys() & state_dict.keys()):
+            state_dict[key] = pretrained_dict[key]
+        net.load_state_dict(state_dict)
+
+        logging.info("loaded pretrained_dict_name: {}".format(pretrain_path))
+
     return net
 
 class BaseNet(nn.Module):

@@ -1,5 +1,6 @@
 import copy
 import logging
+from pickletools import optimize
 import numpy as np
 import torch
 from torch import nn
@@ -53,35 +54,47 @@ class BaseLearner(object):
         self._multiple_gpus = list(range(len(config.device.split(','))))
         self._eval_metric = config.eval_metric
         self._logdir = config.logdir
+        self._opt_type = config.opt_type
         self._history_epochs = 0
 
         self._epochs = config.epochs
-        self._lrate = config.lrate
-        self._milestones = config.milestones
-        self._lrate_decay = config.lrate_decay
+        self._init_epochs = config.epochs if config.init_epochs == None else config.init_epochs
         self._batch_size = config.batch_size
-        self._weight_decay = config.weight_decay
         self._num_workers = config.num_workers
 
-        self._init_epochs = config.epochs if config.init_epochs == None else config.init_epochs
-        self._init_lrate = config.lrate if config.init_lrate == None else config.init_lrate
-        self._init_milestones = config.milestones if config.init_milestones == None else config.init_milestones
-        self._init_lrate_decay = config.lrate_decay if config.init_lrate_decay == None else config.init_lrate_decay
-        self._init_weight_decay = config.weight_decay if config.init_weight_decay == None else config.init_weight_decay
-
         self._criterion = nn.CrossEntropyLoss()
-        
 
-    def save_checkpoint(self, filename, model=None, state_dict=None):
-        save_path = join(self._logdir, filename)
-        if state_dict != None:
-            model_dict = state_dict
+
+    # need to be overwrite probably, base is finetune
+    def incremental_train(self, data_manager):
+        self._cur_task += 1
+        self._total_classes = self._known_classes + data_manager.get_task_size(self._cur_task)
+        self._network.update_fc(self._total_classes)
+        logging.info('All params: {}'.format(count_parameters(self._network)))
+        logging.info('Trainable params: {}'.format(count_parameters(self._network, True)))
+        logging.info('Learning on {}-{}'.format(self._known_classes, self._total_classes))
+
+        if self._cur_task > 0 and self._memory_bank != None:
+            train_dataset = data_manager.get_dataset(np.arange(self._known_classes, self._total_classes), source='train',
+                                                 mode='train', appendent=self._memory_bank.get_memory())
         else:
-            model_dict = model.state_dict()
-        save_dict = {'state_dict': model_dict}
-        save_dict.update(self._config.get_save_config())
-        torch.save(save_dict, save_path)
-        logging.info('model state dict saved at: {}'.format(save_path))
+            train_dataset = data_manager.get_dataset(np.arange(self._known_classes, self._total_classes), source='train',
+                                                 mode='train')
+        
+        self.train_loader = DataLoader(train_dataset, batch_size=self._batch_size, shuffle=True, num_workers=self._num_workers)
+        test_dataset = data_manager.get_dataset(np.arange(0, self._total_classes), source='test', mode='test')
+        self.test_loader = DataLoader(test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
+
+        if len(self._multiple_gpus) > 1:
+            self._network = nn.DataParallel(self._network, self._multiple_gpus)
+
+        self._train(self.train_loader, self.test_loader)
+
+        if len(self._multiple_gpus) > 1:
+            self._network = self._network.module
+        
+        if self._memory_bank != None:
+            self._memory_bank.store_samplers(data_manager, self._network, range(self._known_classes, self._total_classes))
 
 
     def _update_representation(self, train_loader, test_loader, optimizer, scheduler):
@@ -129,15 +142,6 @@ class BaseLearner(object):
         self._history_epochs += epochs
 
 
-    # need to be overwrite probably
-    def after_task(self):
-        self._known_classes = self._total_classes
-        if self._save_models:
-            self.save_checkpoint('{}_{}_{}_task{}_seed{}.pkl'.format(
-                self._method, self._dataset, self._backbone, self._seed), 
-                self._network)
-
-
     def eval_task(self, data_manager):
         if self.cnn_task_metric_curve == None:
             self.cnn_task_metric_curve = [[] for i in range(data_manager.nb_tasks)]
@@ -162,7 +166,7 @@ class BaseLearner(object):
         logging.info("CNN : Average Acc: {:.2f}".format(np.mean(self.cnn_metric_curve)))
         logging.info(' ')
     
-        if len(nme_pred) > 0:
+        if nme_pred != None:
             if self._eval_metric == 'acc':
                 nme_total, nme_task = accuracy(nme_pred.T, y_true, self._total_classes, data_manager._increments)
             else:
@@ -175,48 +179,33 @@ class BaseLearner(object):
             logging.info("NME : Average Acc: {:.2f}".format(np.mean(self.nme_metric_curve)))
             logging.info(' ')
 
+    # need to be overwrite probably
+    def after_task(self):
+        self._known_classes = self._total_classes
+        if self._save_models:
+            self.save_checkpoint('{}_{}_{}_task{}_seed{}.pkl'.format(
+                self._method, self._dataset, self._backbone, self._seed), 
+                self._network)
+    
 
-    # need to be overwrite probably, base is finetune
-    def incremental_train(self, data_manager):
-        self._cur_task += 1
-        self._total_classes = self._known_classes + data_manager.get_task_size(self._cur_task)
-        self._network.update_fc(self._total_classes)
-        logging.info('All params: {}'.format(count_parameters(self._network)))
-        logging.info('Trainable params: {}'.format(count_parameters(self._network, True)))
-        logging.info('Learning on {}-{}'.format(self._known_classes, self._total_classes))
-
-        if self._cur_task > 0 and self._memory_bank != None:
-            history_data, history_target, history_vectors = self._memory_bank.get_memory()
-            train_dataset = data_manager.get_dataset(np.arange(self._known_classes, self._total_classes), source='train',
-                                                 mode='train', appendent=(history_data, history_target))
+    def save_checkpoint(self, filename, model=None, state_dict=None):
+        save_path = join(self._logdir, filename)
+        if state_dict != None:
+            model_dict = state_dict
         else:
-            train_dataset = data_manager.get_dataset(np.arange(self._known_classes, self._total_classes), source='train',
-                                                 mode='train')
-        self.train_loader = DataLoader(train_dataset, batch_size=self._batch_size, shuffle=True, num_workers=self._num_workers)
-        test_dataset = data_manager.get_dataset(np.arange(0, self._total_classes), source='test', mode='test')
-        self.test_loader = DataLoader(test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
-
-        if len(self._multiple_gpus) > 1:
-            self._network = nn.DataParallel(self._network, self._multiple_gpus)
-        self._train(self.train_loader, self.test_loader)
-        if len(self._multiple_gpus) > 1:
-            self._network = self._network.module
-        
-        if self._memory_bank != None:
-            self._memory_bank.store_samplers(data_manager, self._network, range(self._known_classes, self._total_classes))
+            model_dict = model.state_dict()
+        save_dict = {'state_dict': model_dict}
+        save_dict.update(self._config.get_save_config())
+        torch.save(save_dict, save_path)
+        logging.info('model state dict saved at: {}'.format(save_path))
 
 
     # need to be overwrite probably, base is finetune
     def _train(self, train_loader, test_loader):
         self._network.cuda()
-        if self._cur_task==0:
-            optimizer = optim.SGD(filter(lambda p: p.requires_grad, self._network.parameters()), momentum=0.9,lr=self._init_lrate,weight_decay=self._init_weight_decay) 
-            scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=self._init_milestones, gamma=self._init_lrate_decay)            
-        else:
-            optimizer = optim.SGD(filter(lambda p: p.requires_grad, self._network.parameters()), lr=self._lrate, momentum=0.9, weight_decay=self._weight_decay)  # 1e-5
-            scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=self._milestones, gamma=self._lrate_decay)
+        optimizer = self._get_optimizer(self._network, self._config, self._cur_task==0)
+        scheduler = self._get_scheduler(optimizer, self._config, self._cur_task==0)
         self._update_representation(train_loader, test_loader, optimizer, scheduler)
-
 
     def _compute_accuracy(self, model, loader):
         model.eval()
@@ -231,7 +220,6 @@ class BaseLearner(object):
 
         return np.around(tensor2numpy(correct)*100 / total, decimals=2)
     
-
     def _eval_cnn_nme(self, model, loader):
         model.eval()
         cnn_pred, nme_pred, y_true = [], [], []
@@ -246,9 +234,8 @@ class BaseLearner(object):
                 nme_pred.append(tensor2numpy(nme_predicts))
             y_true.append(targets)
 
-        return np.concatenate(cnn_pred), np.concatenate(nme_pred) if len(nme_pred)!=0 else nme_pred, \
+        return np.concatenate(cnn_pred), np.concatenate(nme_pred) if len(nme_pred)!=0 else None, \
                 np.concatenate(y_true)  # [N, topk]
-
 
     def _extract_vectors(self, model, loader):
         model.eval()
@@ -264,3 +251,41 @@ class BaseLearner(object):
             targets.append(_targets)
 
         return np.concatenate(vectors), np.concatenate(targets)
+    
+
+    def _get_optimizer(self, model, config, is_init):
+        optimizer = None
+        if is_init:
+            if config.opt_type == 'sgd':
+                optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), momentum=0.9, lr=config.init_lrate, weight_decay=config.init_weight_decay)
+            elif config.opt_type == 'adam':
+                optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.init_lrate)
+            else: 
+                raise ValueError('No optimazer: {}'.format(config.opt_type))
+        else:
+            if config.opt_type == 'sgd':
+                optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), momentum=0.9, lr=config.lrate, weight_decay=config.weight_decay)
+            elif config.opt_type == 'adam':
+                optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.lrate)
+            else: 
+                raise ValueError('No optimazer: {}'.format(config.opt_type))
+        return optimizer
+    
+    def _get_scheduler(self, optimizer, config, is_init):
+        scheduler = None
+        if is_init:
+            if config.scheduler == 'multi_step':
+                scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=config.init_milestones, gamma=config.init_lrate_decay)
+            elif config.scheduler == 'cos':
+                scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=config.init_epochs)
+            else: 
+                raise ValueError('No optimazer: {}'.format(config.scheduler))
+        else:
+            if config.scheduler == 'multi_step':
+                scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=config.milestones, gamma=config.lrate_decay)
+            elif config.scheduler == 'cos':
+                scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=config.epochs)
+            else: 
+                raise ValueError('No optimazer: {}'.format(config.scheduler))
+        return scheduler
+    

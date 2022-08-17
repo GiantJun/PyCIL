@@ -10,7 +10,7 @@ basic:
     shuffle: true
 
     # Method Choises: icarl, end2end, dr, ucir, bic, lwm, podnet, mas, joint， finetune
-    method: finetune
+    method: finetune_replay
     incre_type: cil
     # eval_metric Choises: acc, recall
     eval_metric: acc
@@ -40,15 +40,18 @@ basic:
 options:
     # experiment settings for cifar100
     cifar100: 
-        resnet32:             
+        resnet32:
+            opt_type: adam  
             init_epochs: 200
             init_lrate: 0.1
+            init_scheduler: multi_step
             init_milestones: [60,120,160]
             init_lrate_decay: 0.1
             init_weight_decay: 0.0005
 
-            epochs: 70
+            epochs: 80
             lrate: 0.1
+            scheduler: multi_step
             milestones: [40, 70]
             lrate_decay: 0.1
             batch_size: 128

@@ -25,24 +25,15 @@ EPSILON = 1e-8
 class multi_bn_pretrained(BaseLearner):
     def __init__(self, config):
         super().__init__(config)
-        self._networks = []
-
-        self._init_epoch = config.init_epochs
-        self._init_lr = config.init_lrate
-        self._init_milestones = config.init_milestones
-        self._init_lr_decay = config.init_lrate_decay
-        self._init_weight_decay = config.init_weight_decay
-
+        self._network_list = []
         self.bn_type = config.bn_type
 
-    def after_task(self):
-        self._known_classes = self._total_classes
 
     def incremental_train(self, data_manager):
         self._cur_task += 1
         self._total_classes = self._known_classes + data_manager.get_task_size(self._cur_task)
-        logging.info('All params: {}'.format(count_parameters(self._network)))
-        logging.info('Trainable params: {}'.format(count_parameters(self._network, True)))
+        logging.info('All params: {}'.format(count_parameters(self._network_list)))
+        logging.info('Trainable params: {}'.format(count_parameters(self._network_list, True)))
         logging.info('Learning on {}-{}'.format(self._known_classes, self._total_classes))
 
         train_dataset = data_manager.get_dataset(np.arange(self._known_classes, self._total_classes), source='train',
@@ -50,52 +41,16 @@ class multi_bn_pretrained(BaseLearner):
         self.train_loader = DataLoader(train_dataset, batch_size=self._batch_size, shuffle=True, num_workers=self._num_workers)
         test_dataset = data_manager.get_dataset(np.arange(0, self._total_classes), source='test', mode='test')
         self.test_loader = DataLoader(test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
-
-        self._networks.append(IncrementalNet(self._convnet_type, False))
-        dst_key = self._get_key(self._convnet_type)
     
         if self._cur_task == 0:
-            #load pretrained model
-            state_dict = self._networks[self._cur_task].convnet.state_dict()
-            logging.info("{}running_mean before update: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "running_mean"][:5]))
-            logging.info("{}weight before update: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "weight"][:5]))
-            logging.info("{}bias before update: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "bias"][:5]))
-
-            if self._dataset == "sd198":
-                # pretrained_dict_name = "./saved_parameters/sd198_resnet18_pretrained_1.pth"
-                pretrained_dict_name = "./saved_parameters/sd198_simsiam_model_18_224.pth"
-                pretrained_dict = torch.load(pretrained_dict_name)
-            elif self._dataset == "cifar100":
-                if self._convnet_type == "resnet32":
-                    pretrained_dict_name = "./saved_parameters/imagenet200_simsiam_model_32.pth"
-                    pretrained_dict = torch.load(pretrained_dict_name)
-                elif self._convnet_type == "resnet18_cbam":
-                    # pretrained_dict_name = "./saved_parameters/imagenet200_resnet18_cbam_pretrained.pth"
-                    pretrained_dict_name = "./saved_parameters/imagenet200_simsiam_pretrained_model.pth"
-                    pretrained_dict = torch.load(pretrained_dict_name)
-            elif self._dataset == "MedMinist":
-                pretrained_dict_name = "./saved_parameters/imagenet200_simsiam_pretrained_model.pth"
-                # pretrained_dict_name = "./saved_parameters/imagenet200_resnet18_cbam_pretrained.pth"
-                pretrained_dict = torch.load(pretrained_dict_name)
-            
-            state_dict.update(pretrained_dict)
-            self._networks[self._cur_task].convnet.load_state_dict(state_dict)
-
-            logging.info("pretrained_dict_name: {}".format(pretrained_dict_name))
-
-            logging.info("{}running_mean after update: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "running_mean"][:5]))
-            logging.info("{}weight after update: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "weight"][:5]))
-            logging.info("{}bias after update: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "bias"][:5]))
-
+            self._network_list.append(IncrementalNet(self._convnet_type, False))
             #compare the difference between using and unusing class augmentation in first session
-            self._networks[self._cur_task].update_fc(self._cur_class)
+            self._network_list[self._cur_task].update_fc(self._cur_class)
 
         else:
-            self._networks[self._cur_task].update_fc(self._cur_class)
+            self._network_list.append(IncrementalNet(self._convnet_type, False))
+            self._network_list[self._cur_task].update_fc(self._cur_class)
             state_dict = self._networks[self._cur_task].convnet.state_dict()
-            logging.info("{}running_mean before update: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "running_mean"][:5]))
-            logging.info("{}weight before update: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "weight"][:5]))
-            logging.info("{}bias before update: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "bias"][:5]))
 
             #["default", "last", "first", "pretrained"]
             if self.bn_type == "default":
@@ -118,20 +73,14 @@ class multi_bn_pretrained(BaseLearner):
                 dst_dict = torch.load("./saved_parameters/imagenet200_simsiam_pretrained_model_bn.pth")
                 state_dict.update(dst_dict)
                 self._networks[self._cur_task].convnet.load_state_dict(state_dict)
-    
-            logging.info("{}running_mean after update: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "running_mean"][:5]))
-            logging.info("{}weight after update: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "weight"][:5]))
-            logging.info("{}bias after update: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "bias"][:5]))
 
         if len(self._multiple_gpus) > 1:
             self._networks[self._cur_task] = nn.DataParallel(self._networks[self._cur_task], self._multiple_gpus)
+        
         self._train(self.train_loader, self.test_loader)
+        
         if len(self._multiple_gpus) > 1:
             self._networks[self._cur_task] = self._networks[self._cur_task].module
-
-        logging.info("{}running_mean after training: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "running_mean"][:5]))
-        logging.info("{}weight after training: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "weight"][:5]))
-        logging.info("{}bias after training: {}".format(dst_key, self._networks[self._cur_task].convnet.state_dict()[dst_key + "bias"][:5]))
 
 
     def _train(self, train_loader, test_loader):

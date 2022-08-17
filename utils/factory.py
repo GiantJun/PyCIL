@@ -12,7 +12,7 @@ from methods.wa import WA
 
 def get_trainer(config, tblog):
     name = config.method.lower()
-    if name == 'finetune':
+    if name in ['finetune', 'finetune_replay']:
         return BaseLearner(config, tblog)
     elif name == 'icarl':
         return iCaRL(config, tblog)
