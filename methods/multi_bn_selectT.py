@@ -28,8 +28,6 @@ class Multi_BN(BaseLearner):
         self._network_list = []
         self._bn_type = config.bn_type
 
-        self._task_bn_weights = []
-
 
     def incremental_train(self, data_manager):
         self._cur_task += 1
@@ -42,7 +40,9 @@ class Multi_BN(BaseLearner):
         self.test_loader = DataLoader(test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
     
         if self._cur_task == 0:
-            self._network_list.append(self._network)
+            self._network_list.append(IncrementalNet(self._backbone, True, self._config.pretrain_path))
+            #compare the difference between using and unusing class augmentation in first session
+            self._network = self._network_list[self._cur_task]
             if self._incre_type == 'cil':
                 self._network.update_fc(self._total_classes)
             elif self._incre_type == 'til':
@@ -102,23 +102,3 @@ class Multi_BN(BaseLearner):
         optimizer = self._get_optimizer(self._network, self._config, self._cur_task==0)
         scheduler = self._get_scheduler(optimizer, self._config, self._cur_task==0)
         self._update_representation(train_loader, test_loader, optimizer, scheduler)
-    
-    def reset_bn(self, model):
-        for m in model.modules():
-            if isinstance(m, nn.BatchNorm2d):
-                m.reset_running_stats()
-                m.reset_parameters()
-    
-    def save_task_bn(self, model):
-        bns_dict = {}
-        for name, param in self._network.named_parameters():
-            if 'bn' in name:
-                logging.info('saved {}'.format(name))
-                bns_dict[name] = param
-        self._task_bn_weights.append(bns_dict)
-    
-    def load_task_bn(self, model, task_id):
-        state_dict = model.state_dict()
-        state_dict.update(self._task_bn_weights[task_id])
-        model.load_state_dict(state_dict)
-        return model

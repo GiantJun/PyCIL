@@ -24,7 +24,7 @@ class BaseLearner(object):
         self._known_classes = 0
         self._total_classes = 0
         self._config = copy.deepcopy(config)
-        self._network = IncrementalNet(config.backbone, config.pretrained)
+        self._network = IncrementalNet(config.backbone, config.pretrained, config.pretrain_path)
 
         # 评价指标变化曲线
         self.cnn_task_metric_curve = None
@@ -218,8 +218,12 @@ class BaseLearner(object):
         for i, (_, inputs, targets) in enumerate(loader):
             inputs = inputs.cuda()
             with torch.no_grad():
-                outputs = model(inputs)['logits']
-            predicts = torch.max(outputs, dim=1)[1]
+                if self._incre_type == 'til':
+                    logits = model.forward_til(inputs, self._cur_task)['logits']
+                    predicts = torch.max(logits, dim=1)[1] + self._known_classes
+                else:
+                    logits = model(inputs)['logits']
+                    predicts = torch.max(logits, dim=1)[1]
             correct += (predicts.cpu() == targets).sum()
             total += len(targets)
 
@@ -231,7 +235,10 @@ class BaseLearner(object):
         for _, (_, inputs, targets) in enumerate(loader):
             inputs = inputs.cuda()
             with torch.no_grad():
-                outputs = model(inputs)
+                if self._incre_type == 'til':
+                    outputs = model.forward_til(inputs, self._cur_task)
+                else:
+                    outputs = model(inputs)
             cnn_predicts = torch.argmax(outputs['logits'], dim=1)
             cnn_pred.append(tensor2numpy(cnn_predicts))
             if self._memory_bank != None:

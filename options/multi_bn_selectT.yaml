@@ -21,9 +21,9 @@ basic:
     save_models: false # if true, programm will save model's weights during incremental train
 
     ######### Exampler Hyperparameters #########
-    # memory_size: 2000
-    # fixed_memory: false
-    # sampling_method: random # icarl, random, closest_to_mean 
+    memory_size: 2000
+    fixed_memory: false
+    sampling_method: random # icarl, random, closest_to_mean 
 
     ######### Task Settings, unimportant in Joint #########
     # for some datasets(e.g. MedMNist), this will be ignored
@@ -43,14 +43,14 @@ options:
         resnet32:
             pretrain_path: pretrain_weights/imagenet200_simsiam_model_32.pth
             opt_type: adam
-            init_epochs: 2 # 200
+            init_epochs: 200
             init_lrate: 0.1
             init_scheduler: multi_step
             init_milestones: [60,120,160]
             init_lrate_decay: 0.1
             init_weight_decay: 0.0005
 
-            epochs: 2 # 80
+            epochs: 80
             lrate: 0.1
             scheduler: multi_step
             milestones: [40, 70]
