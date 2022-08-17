@@ -21,9 +21,9 @@ basic:
     save_models: false # if true, programm will save model's weights during incremental train
 
     ######### Exampler Hyperparameters #########
-    memory_size: 2000
-    fixed_memory: false
-    sampling_method: icarl # icarl, random, closest_to_mean 
+    # memory_size: 2000
+    # fixed_memory: false
+    # sampling_method: random # icarl, random, closest_to_mean 
 
     ######### Task Settings, unimportant in Joint #########
     # for some datasets(e.g. MedMNist), this will be ignored
@@ -33,15 +33,15 @@ basic:
 
 ######### Method's Hyperparameters #########
 special:
-    incre_type: cil
-    T: 1
+    incre_type: til
+    bn_type: default
 
 ######### Experiment Settings for Datasets #########
 options:
     # experiment settings for cifar100
     cifar100: 
         resnet32:
-            pretrain_path: saved_parameters/imagenet200_simsiam_model_32.pth
+            pretrain_path: pretrain_weights/imagenet200_simsiam_model_32.pth
             opt_type: adam
             init_epochs: 200
             init_lrate: 0.1
@@ -59,7 +59,7 @@ options:
             weight_decay: 0.0002
         
         resnet18_cbam:
-            pretrain_path: saved_parameters/imagenet200_simsiam_pretrained_model.pth
+            pretrain_path: pretrain_weights/imagenet200_simsiam_pretrained_model.pth
             opt_type: adam
             init_epochs: 200
             init_lrate: 0.1
@@ -78,7 +78,7 @@ options:
     
     sd198: 
         resnet18:
-            pretrain_path: saved_parameters/imagenet200_simsiam_model_32.pth
+            pretrain_path: pretrain_weights/imagenet200_simsiam_model_32.pth
             opt_type: sgd
             init_epochs: 200
             init_lrate: 0.01
@@ -96,7 +96,7 @@ options:
     
     MedMinist:
         resnet18_cbam:
-            pretrain_path: saved_parameters/imagenet200_simsiam_pretrained_model.pth
+            pretrain_path: pretrain_weights/imagenet200_simsiam_pretrained_model.pth
             opt_type: adam
             init_epochs: 70
             init_lrate: 0.001

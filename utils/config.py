@@ -91,6 +91,8 @@ class Config:
         parser.add_argument('--ft_epochs', type=int, default=None, help='ft_epochs for podnet') # podnet
         parser.add_argument('--ft_lrate', type=float, default=None, help='ft_lrate for podnet') # podnet
 
+        parser.add_argument('--bn_type', type=str, default=None, help='mode for multi_bn method, e.g. default, last, first')
+
         # multi-bn
         parser.add_argument('--multi_bn_type', type=str, default=None, help='different type of multi-bn, e.g. default,last,first,pretrained')
 

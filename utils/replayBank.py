@@ -58,6 +58,7 @@ class ReplayBank:
         self.caculate_class_mean(model, data_manager.get_dataset) #传入函数名
 
     def caculate_class_mean(self, model, get_dataset):
+        logging.info('Calculating Class Means')
         # 重新计算旧类类中心
         class_means = []
         for class_idx, class_samples in enumerate(self._data_memory):

@@ -47,10 +47,10 @@ def get_convnet(convnet_type, pretrained=False, pretrain_path=None):
 
 class BaseNet(nn.Module):
 
-    def __init__(self, convnet_type, pretrained):
+    def __init__(self, convnet_type, pretrained, pretrain_path):
         super(BaseNet, self).__init__()
 
-        self.convnet = get_convnet(convnet_type, pretrained)
+        self.convnet = get_convnet(convnet_type, pretrained, pretrain_path)
         self.fc = None
         self.fc_til = None
 
@@ -94,8 +94,8 @@ class BaseNet(nn.Module):
 
 class IncrementalNet(BaseNet):
 
-    def __init__(self, convnet_type, pretrained, gradcam=False):
-        super().__init__(convnet_type, pretrained)
+    def __init__(self, convnet_type, pretrained, pretrain_path=None, gradcam=False):
+        super().__init__(convnet_type, pretrained, pretrain_path)
         self.gradcam = gradcam
         if hasattr(self, 'gradcam') and self.gradcam:
             self._gradcam_hooks = [None, None]

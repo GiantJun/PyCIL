@@ -8,6 +8,7 @@ from methods.lwf import LwF
 from methods.bic import BiC
 from methods.podnet import PODNet
 from methods.wa import WA
+from methods.multi_bn import Multi_BN
 
 
 def get_trainer(config, tblog):
@@ -32,5 +33,7 @@ def get_trainer(config, tblog):
         return GEM(config, tblog)
     elif name == "coil":
         return COIL(config, tblog)
+    elif name == "multi_bn":
+        return Multi_BN(config, tblog)
     else:
-        assert 0
+        raise ValueError('Unknown method {}'.format(name))

@@ -69,7 +69,12 @@ class BaseLearner(object):
     def incremental_train(self, data_manager):
         self._cur_task += 1
         self._total_classes = self._known_classes + data_manager.get_task_size(self._cur_task)
-        self._network.update_fc(self._total_classes)
+        
+        if self._incre_type == 'cil':
+            self._network.update_fc(self._total_classes)
+        elif self._incre_type == 'til':
+            self._network.update_til_fc(self._total_classes)
+
         logging.info('All params: {}'.format(count_parameters(self._network)))
         logging.info('Trainable params: {}'.format(count_parameters(self._network, True)))
         logging.info('Learning on {}-{}'.format(self._known_classes, self._total_classes))
@@ -147,11 +152,11 @@ class BaseLearner(object):
             self.cnn_task_metric_curve = [[] for i in range(data_manager.nb_tasks)]
             self.nme_task_metric_curve = [[] for i in range(data_manager.nb_tasks)]
 
-        cnn_pred, nme_pred, y_true = self._eval_cnn_nme(self._network, self.test_loader)
-        
         logging.info(50*"-")
         logging.info("log {} of every task".format(self._eval_metric))
         logging.info(50*"-")
+
+        cnn_pred, nme_pred, y_true = self._eval_cnn_nme(self._network, self.test_loader)
 
         # 计算top1, 这里去掉了计算 topk 的代码
         if self._eval_metric == 'acc':
@@ -166,7 +171,7 @@ class BaseLearner(object):
         logging.info("CNN : Average Acc: {:.2f}".format(np.mean(self.cnn_metric_curve)))
         logging.info(' ')
     
-        if nme_pred != None:
+        if len(nme_pred) != 0:
             if self._eval_metric == 'acc':
                 nme_total, nme_task = accuracy(nme_pred.T, y_true, self._total_classes, data_manager._increments)
             else:
@@ -234,7 +239,7 @@ class BaseLearner(object):
                 nme_pred.append(tensor2numpy(nme_predicts))
             y_true.append(targets)
 
-        return np.concatenate(cnn_pred), np.concatenate(nme_pred) if len(nme_pred)!=0 else None, \
+        return np.concatenate(cnn_pred), np.concatenate(nme_pred) if len(nme_pred)!=0 else nme_pred, \
                 np.concatenate(y_true)  # [N, topk]
 
     def _extract_vectors(self, model, loader):
