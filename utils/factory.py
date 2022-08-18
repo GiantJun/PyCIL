@@ -9,6 +9,7 @@ from methods.bic import BiC
 from methods.podnet import PODNet
 from methods.wa import WA
 from methods.multi_bn import Multi_BN
+from methods.multi_bn_selectT import Multi_BN_selectT
 
 
 def get_trainer(config, tblog):
@@ -35,5 +36,7 @@ def get_trainer(config, tblog):
         return COIL(config, tblog)
     elif name == "multi_bn":
         return Multi_BN(config, tblog)
+    elif name == "multi_bn_selectt":
+        return Multi_BN_selectT(config, tblog)
     else:
         raise ValueError('Unknown method {}'.format(name))

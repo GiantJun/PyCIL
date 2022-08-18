@@ -1,6 +1,6 @@
 ######### Basic Settings #########
 basic:
-    device: '3'
+    device: '5'
     seed: [1993] # icarl 官方代码给的种子是 1993
     num_workers: 8
 
@@ -10,19 +10,20 @@ basic:
     shuffle: true
 
     # Method Choises: icarl, end2end, dr, ucir, bic, lwm, podnet, mas, joint， finetune
-    method: multi_bn
+    method: multi_bn_selectT
     # eval_metric Choises: acc, recall
     eval_metric: acc
 
     # Backbone Choises: resnet18, resnet18_cbam, cosine_resnet18, 
     # resnet32, cosine_resnet32, resnet34, cosine_resnet34, resnet50
-    backbone: resnet32
+    backbone: resnet18_cbam
     pretrained: true
     save_models: false # if true, programm will save model's weights during incremental train
 
     ######### Exampler Hyperparameters #########
     memory_size: 2000
-    fixed_memory: false
+    fixed_memory: true
+    memory_per_class: 20
     sampling_method: random # icarl, random, closest_to_mean 
 
     ######### Task Settings, unimportant in Joint #########
@@ -33,7 +34,7 @@ basic:
 
 ######### Method's Hyperparameters #########
 special:
-    incre_type: til
+    incre_type: til # 方法是 til 为了方便实现，使用cil
     bn_type: default
 
 ######### Experiment Settings for Datasets #########
@@ -43,14 +44,14 @@ options:
         resnet32:
             pretrain_path: pretrain_weights/imagenet200_simsiam_model_32.pth
             opt_type: adam
-            init_epochs: 200
+            init_epochs: 200 # 200
             init_lrate: 0.1
             init_scheduler: multi_step
             init_milestones: [60,120,160]
             init_lrate_decay: 0.1
             init_weight_decay: 0.0005
 
-            epochs: 80
+            epochs: 80 # 80
             lrate: 0.1
             scheduler: multi_step
             milestones: [40, 70]
@@ -61,14 +62,14 @@ options:
         resnet18_cbam:
             pretrain_path: pretrain_weights/imagenet200_simsiam_pretrained_model.pth
             opt_type: adam
-            init_epochs: 200
+            init_epochs: 200 # 200
             init_lrate: 0.1
             init_scheduler: multi_step
             init_milestones: [60,120,160]
             init_lrate_decay: 0.1
             init_weight_decay: 0.0005
 
-            epochs: 80
+            epochs: 80 # 80
             lrate: 0.1
             scheduler: multi_step
             milestones: [40, 70]
@@ -78,7 +79,7 @@ options:
     
     sd198: 
         resnet18:
-            pretrain_path: pretrain_weights/imagenet200_simsiam_model_32.pth
+            pretrain_path: pretrain_weights/sd198_simsiam_model_18_224.pth
             opt_type: sgd
             init_epochs: 200
             init_lrate: 0.01

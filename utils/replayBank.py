@@ -20,7 +20,10 @@ class ReplayBank:
         # 另一种在固定存储空间中，平均分配每一类允许存储的样本数量
         self._fixed_memory = config.fixed_memory
         if self._fixed_memory:
-            self._memory_per_class = config.memory_per_class
+            if config.memory_per_class == None:
+                raise ValueError('if apply fix memory, memory_per_class should not be None !')
+            else:
+                self._memory_per_class = config.memory_per_class
         self._sampling_method = config.sampling_method # 采样的方式
 
         self._data_memory = [] # 第一维长度为类别数，第二维为每一类允许存放的样本数
@@ -80,6 +83,7 @@ class ReplayBank:
             mean = torch.mean(idx_vectors, dim=0)
             mean = F.normalize(mean, dim=0)
             class_means.append(mean.unsqueeze(0))
+            logging.info('calculated class mean of class {}'.format(class_idx))
         
         self._class_means = torch.cat(class_means)
 

@@ -27,9 +27,8 @@ class Multi_BN_selectT(BaseLearner):
         super().__init__(config, tblog)
         self._network_list = []
         self._bn_type = config.bn_type
-
         self._network_list.append(self._network) # 网络 0 用作划分task
-        # 虽然方法是 til 但为了方便使用 cil 做推理（主要在测试时用到这个参数）
+        # 虽然方法是 til 但为了方便使用 cil 做推理
         self._incre_type = 'cil'
 
     def incremental_train(self, data_manager):
@@ -78,7 +77,7 @@ class Multi_BN_selectT(BaseLearner):
             self._network = nn.DataParallel(self._network, self._multiple_gpus)
         
         self._train(self.train_loader, self.test_loader)
-        self._memory_bank.store_samplers(data_manager, self._network)
+        self._memory_bank.store_samplers(data_manager, self._network, range(self._known_classes, self._total_classes))
         
         if len(self._multiple_gpus) > 1:
             self._network = self._network.module
@@ -94,6 +93,7 @@ class Multi_BN_selectT(BaseLearner):
                 param.requires_grad = False
         optimizer = self._get_optimizer(self._network, self._config, self._cur_task==0)
         scheduler = self._get_scheduler(optimizer, self._config, self._cur_task==0)
+        self._incre_type = 'til'
         self._network = self._update_representation(self._network, train_loader, test_loader, optimizer, scheduler)
     
     def reset_bn(self, model):
@@ -112,6 +112,8 @@ class Multi_BN_selectT(BaseLearner):
             test_dataset = data_manager.get_dataset(np.arange(known_classes, total_classes), source='test', 
                                                     mode='test')
             test_loader = DataLoader(test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
+            
+            self._incre_type = 'cil'
             cnn_pred, nme_pred, y_true = self._eval_cnn_nme_cil(self._network_list[task_id+1], test_loader)
             cnn_pred_result.append(cnn_pred+known_classes)
             if len(nme_pred) > 0:
@@ -145,9 +147,14 @@ class Multi_BN_selectT(BaseLearner):
             for i, (_, inputs, targets) in enumerate(train_loader):
                 inputs, targets = inputs.cuda(), targets.cuda()
 
-                logits = model(inputs)['logits']
-                loss = self._criterion(logits, targets - self._known_classes)
-                preds = torch.max(logits, dim=1)[1] + self._known_classes
+                if self._incre_type == 'cil':
+                    logits = model(inputs)['logits']
+                    loss = self._criterion(logits, targets)
+                    preds = torch.max(logits, dim=1)[1]
+                elif self._incre_type == 'til':
+                    logits = model(inputs)['logits']
+                    loss = self._criterion(logits, targets - self._known_classes)
+                    preds = torch.max(logits, dim=1)[1] + self._known_classes
         
                 optimizer.zero_grad()
                 loss.backward()
@@ -208,6 +215,7 @@ class Multi_BN_selectT(BaseLearner):
             logging.info(' ')
 
         if self._cur_task == data_manager.nb_tasks-1:
+            logging.info('='*10 + ' train and test task id discriminator '+'='*10)
             known_classes = 0
             total_classes = 0
             train_task_data, train_task_target = [], []
@@ -217,17 +225,19 @@ class Multi_BN_selectT(BaseLearner):
             test_data, test_target, _ = data_manager.get_dataset(np.arange(0, self._total_classes), source='test', mode='test', ret_data=True)
 
             classify_task_network = self._network_list[0]
+            classify_task_network.update_fc(data_manager.nb_tasks)
         
             for task_id in range(data_manager.nb_tasks):
                 total_classes += data_manager.get_task_size(task_id)
                 train_idxes = np.where(np.logical_and(memory_target >= known_classes, memory_target < total_classes))[0]
                 train_task_data.append(memory_data[train_idxes])
-                train_task_target.append(np.ones((len(train_idxes),)) * task_id)
+                train_task_target.append(np.ones((len(train_idxes),), dtype=int) * task_id)
 
                 test_idxes = np.where(np.logical_and(test_target >= known_classes, test_target < total_classes))[0]
                 test_task_data.append(test_data[test_idxes])
                 test_class_target.append(test_target[test_idxes])
-                test_task_target.append(np.ones((len(test_idxes),)) * task_id)
+                test_task_target.append(np.ones((len(test_idxes),), dtype=int) * task_id)
+                known_classes = total_classes
 
             train_task_data, train_task_target = np.concatenate(train_task_data), np.concatenate(train_task_target)
             train_dataset = data_manager.get_dataset(np.arange(0), source='train', mode='train', appendent=(train_task_data, train_task_target))
@@ -246,8 +256,32 @@ class Multi_BN_selectT(BaseLearner):
                     param.requires_grad = False
             optimizer = self._get_optimizer(classify_task_network, self._config, True)
             scheduler = self._get_scheduler(optimizer, self._config, True)
+            self._incre_type = 'cil'
             classify_task_network = self._update_representation(classify_task_network, train_loader, test_loader, optimizer, scheduler)
 
-            logging.info('applying task discriminater network')
+            logging.info('applying task discriminator network')
+            self._incre_type = 'cil'
             cnn_pred, nme_pred, y_true = self._eval_cnn_nme_cil(classify_task_network, test_loader)
             logging.info('task predict acc: {:.2f}'.format((y_true==cnn_pred).sum()*100/len(y_true)))
+
+            final_pred, final_target = [], []
+            known_classes = 0
+            total_classes = 0
+            for task_id in range(data_manager.nb_tasks):
+                total_classes += data_manager.get_task_size(task_id)
+                task_pred_idxes = np.where(cnn_pred==task_id)[0]
+                temp_test_data = test_task_data[task_pred_idxes]
+                temp_class_target = test_class_target[task_pred_idxes]
+                
+                if len(task_pred_idxes) > 0:
+                    test_dataset = data_manager.get_dataset(np.arange(0), source='test', mode='test', appendent=(temp_test_data, temp_class_target))
+                    test_loader = DataLoader(test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
+                    self._incre_type = 'cil'
+                    cnn_pred, nme_pred, y_true = self._eval_cnn_nme_cil(self._network_list[task_id+1], test_loader)
+                    final_pred.append(cnn_pred+known_classes)
+                    final_target.append(temp_class_target)
+                known_classes = total_classes
+            
+            til_pred, target = np.concatenate(final_target), np.concatenate(final_pred)
+            logging.info('apply task discriminator classify acc: {:.2f}'.format((til_pred==target).sum()*100/len(target)))
+

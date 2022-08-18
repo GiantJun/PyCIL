@@ -21,16 +21,19 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES']=config.device
 
     tblog = set_logger(config, True)
-    for seed in seed_list:
-        temp_config = copy.deepcopy(config)
-        temp_config.seed = seed
-        set_random()
-        data_manager = DataManager(temp_config.dataset, temp_config.shuffle, temp_config.seed, temp_config.init_cls, temp_config.increment)
-        temp_config.update({'total_class_num':data_manager.total_classes})
-        config.print_config()
-        trainer = factory.get_trainer(temp_config, tblog)
+    try:
+        for seed in seed_list:
+            temp_config = copy.deepcopy(config)
+            temp_config.seed = seed
+            set_random()
+            data_manager = DataManager(temp_config.dataset, temp_config.shuffle, temp_config.seed, temp_config.init_cls, temp_config.increment)
+            temp_config.update({'total_class_num':data_manager.total_classes})
+            config.print_config()
+            trainer = factory.get_trainer(temp_config, tblog)
 
-        for task in range(data_manager.nb_tasks):
-            trainer.incremental_train(data_manager)
-            trainer.eval_task(data_manager)
-            trainer.after_task()
+            for task in range(data_manager.nb_tasks):
+                trainer.incremental_train(data_manager)
+                trainer.eval_task(data_manager)
+                trainer.after_task()
+    except Exception as e:
+        logging.error(e, exc_info=True, stack_info=True)

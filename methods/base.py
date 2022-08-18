@@ -48,7 +48,7 @@ class BaseLearner(object):
             self._memory_per_class = config.memory_per_class
         self._memory_bank = None
         if (self._memory_size != None and self._fixed_memory != None and 
-            self._sampling_method != None and self._incre_type == 'cil'):
+            self._sampling_method != None):
             self._memory_bank = ReplayBank(self._config)
             logging.info('Memory bank created!')
 
