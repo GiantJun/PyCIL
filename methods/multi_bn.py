@@ -28,12 +28,13 @@ class Multi_BN(BaseLearner):
         self._network_list = []
         self._bn_type = config.bn_type
 
-        self._task_bn_weights = []
-
+        # 虽然方法是 til 但为了方便使用 cil 做推理（主要在测试时用到这个参数）
+        self._incre_type = 'cil'
 
     def incremental_train(self, data_manager):
         self._cur_task += 1
-        self._total_classes = self._known_classes + data_manager.get_task_size(self._cur_task)
+        self._cur_classes = data_manager.get_task_size(self._cur_task)
+        self._total_classes = self._known_classes + self._cur_classes
 
         train_dataset = data_manager.get_dataset(np.arange(self._known_classes, self._total_classes), source='train',
                                                  mode='train')
@@ -42,18 +43,12 @@ class Multi_BN(BaseLearner):
         self.test_loader = DataLoader(test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
     
         if self._cur_task == 0:
+            self._network.update_fc(self._cur_classes)
             self._network_list.append(self._network)
-            if self._incre_type == 'cil':
-                self._network.update_fc(self._total_classes)
-            elif self._incre_type == 'til':
-                self._network.update_til_fc(self._total_classes)
         else:
             self._network_list.append(IncrementalNet(self._backbone, False))
             self._network = self._network_list[self._cur_task]
-            if self._incre_type == 'cil':
-                self._network.update_fc(self._total_classes)
-            elif self._incre_type == 'til':
-                self._network.update_til_fc(self._total_classes)
+            self._network.update_fc(self._cur_classes)
             state_dict = self._network.convnet.state_dict()
 
             #["default", "last", "first", "pretrained"]
@@ -108,17 +103,72 @@ class Multi_BN(BaseLearner):
             if isinstance(m, nn.BatchNorm2d):
                 m.reset_running_stats()
                 m.reset_parameters()
+
+    def _eval_cnn_nme_til(self, model, data_manager):
+        known_classes = 0
+        total_classes = 0
+        cnn_pred_result, nme_pred_result, y_true_result = [], [], []
+        for task_id in range(self._cur_task + 1):
+            cur_classes = data_manager.get_task_size(task_id)
+            total_classes += cur_classes
+            test_dataset = data_manager.get_dataset(np.arange(known_classes, total_classes), source='test', 
+                                                    mode='test')
+            test_loader = DataLoader(test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
+            cnn_pred, nme_pred, y_true = self._eval_cnn_nme_cil(self._network_list[task_id], test_loader)
+            cnn_pred_result.append(cnn_pred+known_classes)
+            if len(nme_pred) > 0:
+                nme_pred_result.append(nme_pred+known_classes)
+            y_true_result.append(y_true)
+            known_classes = total_classes
+
+        if len(nme_pred_result) == 1:
+            cnn_pred_result = cnn_pred_result[0]
+            nme_pred_result = nme_pred_result[0]
+            y_true_result = y_true_result[0]
+        elif len(nme_pred_result) > 1:
+            cnn_pred_result = np.concatenate(cnn_pred_result)
+            nme_pred_result = np.concatenate(nme_pred_result)
+            y_true_result = np.concatenate(y_true_result)
+        else:
+            cnn_pred_result = np.concatenate(cnn_pred_result)
+            y_true_result = np.concatenate(y_true_result)
+
+        return cnn_pred_result, nme_pred_result, y_true_result
     
-    def save_task_bn(self, model):
-        bns_dict = {}
-        for name, param in self._network.named_parameters():
-            if 'bn' in name:
-                logging.info('saved {}'.format(name))
-                bns_dict[name] = param
-        self._task_bn_weights.append(bns_dict)
-    
-    def load_task_bn(self, model, task_id):
-        state_dict = model.state_dict()
-        state_dict.update(self._task_bn_weights[task_id])
-        model.load_state_dict(state_dict)
-        return model
+    def _update_representation(self, train_loader, test_loader, optimizer, scheduler):
+        if self._cur_task == 0:
+            epochs = self._init_epochs
+        else:
+            epochs = self._epochs
+        for epoch in range(epochs):
+            self._network.train()
+            losses = 0.
+            correct, total = 0, 0
+            for i, (_, inputs, targets) in enumerate(train_loader):
+                inputs, targets = inputs.cuda(), targets.cuda()
+
+                logits = self._network(inputs)['logits']
+                loss = self._criterion(logits, targets - self._known_classes)
+                preds = torch.max(logits, dim=1)[1] + self._known_classes
+        
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                losses += loss.item()
+
+                correct += preds.eq(targets).cpu().sum()
+                total += len(targets)
+
+            scheduler.step()
+            train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
+            
+            test_acc = self._compute_accuracy(self._network, test_loader)
+            info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}, Test_accy {:.2f}'.format(
+            self._cur_task, epoch+1, epochs, losses/len(train_loader), train_acc, test_acc)
+            
+            self._tblog.add_scalar('seed{}_train/loss'.format(self._seed), losses/len(train_loader), self._history_epochs+epoch)
+            self._tblog.add_scalar('seed{}_train/acc'.format(self._seed), train_acc, self._history_epochs+epoch)
+            self._tblog.add_scalar('seed{}_test/acc'.format(self._seed), test_acc, self._history_epochs+epoch)
+            logging.info(info)
+        
+        self._history_epochs += epochs

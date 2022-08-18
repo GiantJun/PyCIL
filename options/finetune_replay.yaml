@@ -42,14 +42,14 @@ options:
     cifar100: 
         resnet32:
             opt_type: adam  
-            init_epochs: 2 #200
+            init_epochs: 200 #200
             init_lrate: 0.1
             init_scheduler: multi_step
             init_milestones: [60,120,160]
             init_lrate_decay: 0.1
             init_weight_decay: 0.0005
 
-            epochs: 2 #80
+            epochs: 80 #80
             lrate: 0.1
             scheduler: multi_step
             milestones: [40, 70]
