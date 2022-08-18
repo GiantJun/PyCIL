@@ -16,7 +16,7 @@ basic:
 
     # Backbone Choises: resnet18, resnet18_cbam, cosine_resnet18, 
     # resnet32, cosine_resnet32, resnet34, cosine_resnet34, resnet50
-    backbone: resnet32
+    backbone: resnet18_cbam
     pretrained: true
     save_models: false # if true, programm will save model's weights during incremental train
 
@@ -78,7 +78,7 @@ options:
     
     sd198: 
         resnet18:
-            pretrain_path: pretrain_weights/imagenet200_simsiam_model_32.pth
+            pretrain_path: pretrain_weights/sd198_simsiam_model_18_224.pth
             opt_type: sgd
             init_epochs: 200
             init_lrate: 0.01

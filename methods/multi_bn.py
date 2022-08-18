@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from methods.base import BaseLearner
 from backbone.inc_net import IncrementalNet
 from utils import data_manager
-from utils.toolkit import target2onehot, tensor2numpy
+from utils.toolkit import accuracy, tensor2numpy
 from backbone.linears import SimpleLinear
 from utils.toolkit import count_parameters
 
@@ -43,11 +43,11 @@ class Multi_BN(BaseLearner):
         self.test_loader = DataLoader(test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
     
         if self._cur_task == 0:
-            self._network.update_fc(self._cur_classes)
             self._network_list.append(self._network)
+            self._network.update_fc(self._cur_classes)
         else:
-            self._network_list.append(IncrementalNet(self._backbone, False))
-            self._network = self._network_list[self._cur_task]
+            self._network = IncrementalNet(self._backbone, False)
+            self._network_list.append(self._network)
             self._network.update_fc(self._cur_classes)
             state_dict = self._network.convnet.state_dict()
 
@@ -96,7 +96,7 @@ class Multi_BN(BaseLearner):
                 param.requires_grad = False
         optimizer = self._get_optimizer(self._network, self._config, self._cur_task==0)
         scheduler = self._get_scheduler(optimizer, self._config, self._cur_task==0)
-        self._update_representation(train_loader, test_loader, optimizer, scheduler)
+        self._network = self._update_representation(self._network, train_loader, test_loader, optimizer, scheduler)
     
     def reset_bn(self, model):
         for m in model.modules():
@@ -135,19 +135,19 @@ class Multi_BN(BaseLearner):
 
         return cnn_pred_result, nme_pred_result, y_true_result
     
-    def _update_representation(self, train_loader, test_loader, optimizer, scheduler):
+    def _update_representation(self, model, train_loader, test_loader, optimizer, scheduler):
         if self._cur_task == 0:
             epochs = self._init_epochs
         else:
             epochs = self._epochs
         for epoch in range(epochs):
-            self._network.train()
+            model.train()
             losses = 0.
             correct, total = 0, 0
             for i, (_, inputs, targets) in enumerate(train_loader):
                 inputs, targets = inputs.cuda(), targets.cuda()
 
-                logits = self._network(inputs)['logits']
+                logits = model(inputs)['logits']
                 loss = self._criterion(logits, targets - self._known_classes)
                 preds = torch.max(logits, dim=1)[1] + self._known_classes
         
@@ -162,13 +162,49 @@ class Multi_BN(BaseLearner):
             scheduler.step()
             train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
             
-            test_acc = self._compute_accuracy(self._network, test_loader)
-            info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}, Test_accy {:.2f}'.format(
-            self._cur_task, epoch+1, epochs, losses/len(train_loader), train_acc, test_acc)
+            info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}'.format(
+            self._cur_task, epoch+1, epochs, losses/len(train_loader), train_acc)
             
             self._tblog.add_scalar('seed{}_train/loss'.format(self._seed), losses/len(train_loader), self._history_epochs+epoch)
             self._tblog.add_scalar('seed{}_train/acc'.format(self._seed), train_acc, self._history_epochs+epoch)
-            self._tblog.add_scalar('seed{}_test/acc'.format(self._seed), test_acc, self._history_epochs+epoch)
+
             logging.info(info)
         
         self._history_epochs += epochs
+        return model
+    
+    def eval_task(self, data_manager):
+        if self.cnn_task_metric_curve == None:
+            self.cnn_task_metric_curve = [[] for i in range(data_manager.nb_tasks)]
+            self.nme_task_metric_curve = [[] for i in range(data_manager.nb_tasks)]
+
+        logging.info(50*"-")
+        logging.info("log {} of every task".format(self._eval_metric))
+        logging.info(50*"-")
+        cnn_pred, nme_pred, y_true = self._eval_cnn_nme_til(self._network, data_manager)
+
+        # 计算top1, 这里去掉了计算 topk 的代码
+        if self._eval_metric == 'acc':
+            cnn_total, cnn_task = accuracy(cnn_pred.T, y_true, self._total_classes, data_manager._increments)
+        else:
+            pass
+        self.cnn_metric_curve.append(cnn_total)
+        logging.info("CNN : {} curve of all task is {}".format(self._eval_metric, self.cnn_metric_curve))
+        for i in range(len(cnn_task)):
+            self.cnn_task_metric_curve[i].append(cnn_task[i])
+            logging.info("CNN : task {} {} curve is {}".format(i, self._eval_metric, self.cnn_task_metric_curve[i]))
+        logging.info("CNN : Average Acc: {:.2f}".format(np.mean(self.cnn_metric_curve)))
+        logging.info(' ')
+    
+        if len(nme_pred) != 0:
+            if self._eval_metric == 'acc':
+                nme_total, nme_task = accuracy(nme_pred.T, y_true, self._total_classes, data_manager._increments)
+            else:
+                pass
+            self.nme_metric_curve.append(nme_total)
+            logging.info("NME : {} curve of all task is {}".format(self._eval_metric, self.nme_metric_curve))
+            for i in range(len(nme_task)):
+                self.nme_task_metric_curve[i].append(nme_task[i])
+                logging.info("NME : task {} {} curve is {}".format(i, self._eval_metric, self.nme_task_metric_curve[i]))
+            logging.info("NME : Average Acc: {:.2f}".format(np.mean(self.nme_metric_curve)))
+            logging.info(' ')

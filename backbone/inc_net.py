@@ -9,9 +9,10 @@ from backbone.ucir_resnet import resnet18 as cosine_resnet18
 from backbone.ucir_resnet import resnet34 as cosine_resnet34
 from backbone.ucir_resnet import resnet50 as cosine_resnet50
 from backbone.linears import SimpleLinear, SplitCosineLinear, CosineLinear
+from backbone.cifar_resnet_cbam import resnet18_cbam as resnet18_cbam
 
 
-def get_convnet(convnet_type, pretrained=False, pretrain_path=None):
+def get_convnet(convnet_type, pretrained=False, pretrain_path=None, normed=False):
     name = convnet_type.lower()
     net = None
     if name in torch_models.__dict__.keys():
@@ -26,6 +27,8 @@ def get_convnet(convnet_type, pretrained=False, pretrain_path=None):
         net = cosine_resnet34(pretrained=pretrained)
     elif name == 'cosine_resnet50':
         net = cosine_resnet50(pretrained=pretrained)
+    elif name == 'resnet18_cbam':
+        net = resnet18_cbam(normed=normed)
     else:
         raise NotImplementedError('Unknown type {}'.format(convnet_type))
     logging.info('Created {} !'.format(name))

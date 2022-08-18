@@ -104,24 +104,24 @@ class BaseLearner(object):
             self._memory_bank.store_samplers(data_manager, self._network, range(self._known_classes, self._total_classes))
 
 
-    def _update_representation(self, train_loader, test_loader, optimizer, scheduler):
+    def _update_representation(self, model, train_loader, test_loader, optimizer, scheduler):
         if self._cur_task == 0:
             epochs = self._init_epochs
         else:
             epochs = self._epochs
         for epoch in range(epochs):
-            self._network.train()
+            model.train()
             losses = 0.
             correct, total = 0, 0
             for i, (_, inputs, targets) in enumerate(train_loader):
                 inputs, targets = inputs.cuda(), targets.cuda()
 
                 if self._incre_type == 'cil':
-                    logits = self._network(inputs)['logits']
+                    logits = model(inputs)['logits']
                     loss = self._criterion(logits, targets)
                     preds = torch.max(logits, dim=1)[1]
                 elif self._incre_type == 'til':
-                    logits = self._network.forward_til(inputs, self._cur_task)['logits']
+                    logits = model.forward_til(inputs, self._cur_task)['logits']
                     loss = self._criterion(logits, targets - self._known_classes)
                     preds = torch.max(logits, dim=1)[1] + self._known_classes
         
@@ -136,7 +136,7 @@ class BaseLearner(object):
             scheduler.step()
             train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
             
-            test_acc = self._compute_accuracy(self._network, test_loader)
+            test_acc = self._compute_accuracy(model, test_loader)
             info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}, Test_accy {:.2f}'.format(
             self._cur_task, epoch+1, epochs, losses/len(train_loader), train_acc, test_acc)
             
@@ -146,7 +146,7 @@ class BaseLearner(object):
             logging.info(info)
         
         self._history_epochs += epochs
-
+        return model
 
     def eval_task(self, data_manager):
         if self.cnn_task_metric_curve == None:
@@ -213,7 +213,7 @@ class BaseLearner(object):
         self._network.cuda()
         optimizer = self._get_optimizer(self._network, self._config, self._cur_task==0)
         scheduler = self._get_scheduler(optimizer, self._config, self._cur_task==0)
-        self._update_representation(train_loader, test_loader, optimizer, scheduler)
+        self._network = self._update_representation(self._network, train_loader, test_loader, optimizer, scheduler)
 
     def _compute_accuracy(self, model, loader):
         model.eval()
