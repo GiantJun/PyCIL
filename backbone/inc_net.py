@@ -12,7 +12,7 @@ from backbone.linears import SimpleLinear, SplitCosineLinear, CosineLinear
 from backbone.cifar_resnet_cbam import resnet18_cbam as resnet18_cbam
 
 
-def get_convnet(convnet_type, pretrained=False, pretrain_path=None, normed=False):
+def get_backbone(convnet_type, pretrained=False, pretrain_path=None, normed=False):
     name = convnet_type.lower()
     net = None
     if name in torch_models.__dict__.keys():
@@ -53,7 +53,7 @@ class BaseNet(nn.Module):
     def __init__(self, convnet_type, pretrained, pretrain_path):
         super(BaseNet, self).__init__()
 
-        self.convnet = get_convnet(convnet_type, pretrained, pretrain_path)
+        self.convnet = get_backbone(convnet_type, pretrained, pretrain_path)
         self.fc = None
         self.fc_til = None
 
@@ -324,9 +324,9 @@ class DERNet(nn.Module):
 
     def update_fc(self, nb_classes):
         if len(self.convnets)==0:
-            self.convnets.append(get_convnet(self.convnet_type))
+            self.convnets.append(get_backbone(self.convnet_type))
         else:
-            self.convnets.append(get_convnet(self.convnet_type))
+            self.convnets.append(get_backbone(self.convnet_type))
             self.convnets[-1].load_state_dict(self.convnets[-2].state_dict())
 
         if self.out_dim is None:

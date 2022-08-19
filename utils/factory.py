@@ -1,3 +1,4 @@
+from methods.base import BaseLearner
 from methods.coil import COIL
 from methods.der import DER
 from methods.ewc import EWC
@@ -12,7 +13,7 @@ from methods.multi_bn import Multi_BN
 from methods.multi_bn_selectT import Multi_BN_selectT
 
 
-def get_trainer(config, tblog):
+def get_trainer(config, tblog) -> BaseLearner:
     name = config.method.lower()
     if name in ['finetune', 'finetune_replay']:
         return BaseLearner(config, tblog)

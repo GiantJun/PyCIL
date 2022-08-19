@@ -2,158 +2,62 @@ import logging
 import numpy as np
 from tqdm import tqdm
 import torch
-from torch import nn
-from torch import optim
 from torch.nn import functional as F
-from torch.utils.data import DataLoader
 from methods.base import BaseLearner
-from backbone.inc_net import IncrementalNet
-from backbone.inc_net import CosineIncrementalNet
 from utils.toolkit import target2onehot, tensor2numpy
+from torch.nn.functional import cross_entropy
 
 EPSILON = 1e-8
 
-# self._init_epoch=200
-# self._init_lr=0.1
-# self._self._init_milestones=[60,120,170]
-# self._init_lr_decay=0.1
-# self._init_weight_decay=0.0005
-
-
-# self._epochs = 170
-# self._lrate = 0.1
-# milestones = [80, 120]
-# self._lrate_decay = 0.1
-# self._batch_size = 128
-# weight_decay=2e-4
-# num_workers=8
-# T=2
-
 class iCaRL(BaseLearner):
 
-    def __init__(self, config):
-        super().__init__(config)
-        self._init_epoch = config.init_epoch
-        self._init_lr = config.init_lr
-        self._init_milestones = config.init_milestones
-        self._init_lr_decay = config.init_lr_decay
-        self._init_weight_decay = config.init_weight_decay
-
-        self._network = IncrementalNet(config.backbone, config.pretrained)
-
+    def __init__(self, config, tblog):
+        super().__init__(config, tblog)
         self._T = config.T
+        self._old_network = None
+        if self._incre_type != 'cil':
+            raise ValueError('iCaRL is a class incremental method!')
 
-        # self._init_epoch = 1
-        # self._epochs = 1
-
-    def after_task(self):
-        self._old_network = self._network.copy().freeze()
-        self._known_classes = self._total_classes
-        logging.info('Exemplar size: {}'.format(self.exemplar_size))
-
-    def incremental_train(self, data_manager):
-        self._cur_task += 1
-        self._total_classes = self._known_classes + data_manager.get_task_size(self._cur_task)
-        self._network.update_fc(self._total_classes)
-        logging.info('Learning on {}-{}'.format(self._known_classes, self._total_classes))
-
-        train_dataset = data_manager.get_dataset(np.arange(self._known_classes, self._total_classes), source='train',
-                                                 mode='train', appendent=self._get_memory())
-        self.train_loader = DataLoader(train_dataset, batch_size=self._batch_size, shuffle=True, num_workers=self._num_workers)
-        test_dataset = data_manager.get_dataset(np.arange(0, self._total_classes), source='test', mode='test')
-        self.test_loader = DataLoader(test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
-
-        if len(self._multiple_gpus) > 1:
-            self._network = nn.DataParallel(self._network, self._multiple_gpus)
-        self._train(self.train_loader, self.test_loader)
-        self.build_rehearsal_memory(data_manager, self.samples_per_class)
-        if len(self._multiple_gpus) > 1:
-            self._network = self._network.module
-
-    def _train(self, train_loader, test_loader):
-        self._network.cuda()
+    def _train_model(self, model, train_loader, test_loader):
         if self._old_network is not None:
             self._old_network.cuda()
+        return super()._train_model(model, train_loader, test_loader)
 
-        if self._cur_task==0:
-            optimizer = optim.SGD(self._network.parameters(), momentum=0.9,lr=self._init_lr,weight_decay=self._init_weight_decay) 
-            scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=self._init_milestones, gamma=self._init_lr_decay)            
-            self._init_train(train_loader,test_loader,optimizer,scheduler)
-        else:
-            optimizer = optim.SGD(self._network.parameters(), lr=self._lrate, momentum=0.9, weight_decay=self._weight_decay)  # 1e-5
-            scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=self._milestones, gamma=self._lrate_decay)
-            self._update_representation(train_loader, test_loader, optimizer, scheduler)
-
-
-    def _init_train(self,train_loader,test_loader,optimizer,scheduler):
-        prog_bar = tqdm(range(self._init_epoch))
-        for _, epoch in enumerate(prog_bar):
-            self._network.train()
-            losses = 0.
-            correct, total = 0, 0
-            for i, (_, inputs, targets) in enumerate(train_loader):
-                inputs, targets = inputs.cuda(), targets.cuda()
-                logits = self._network(inputs)['logits']
-
-                loss=F.cross_entropy(logits,targets) 
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                losses += loss.item()
-
-                _, preds = torch.max(logits, dim=1)
-                correct += preds.eq(targets.expand_as(preds)).cpu().sum()
-                total += len(targets)
-
-            scheduler.step()
-            train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
-
-            test_acc = self._compute_accuracy(self._network, test_loader)
-            info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}, Test_accy {:.2f}'.format(
-            self._cur_task, epoch+1, self._init_epoch, losses/len(train_loader), train_acc, test_acc)
-            prog_bar.set_description(info)
-
-        logging.info(info)
-
-
-    def _update_representation(self, train_loader, test_loader, optimizer, scheduler):
-        prog_bar = tqdm(range(self._epochs))
-        for _, epoch in enumerate(prog_bar):
-            self._network.train()
-            losses = 0.
-            correct, total = 0, 0
-            for i, (_, inputs, targets) in enumerate(train_loader):
-                inputs, targets = inputs.cuda(), targets.cuda()
-                logits = self._network(inputs)['logits']
-
-                loss_clf=F.cross_entropy(logits,targets)
-                loss_kd=_KD_loss(logits[:,:self._known_classes],self._old_network(inputs)["logits"],self._T)
-
-                loss=loss_clf+loss_kd
-
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                losses += loss.item()
-
-                _, preds = torch.max(logits, dim=1)
-                correct += preds.eq(targets.expand_as(preds)).cpu().sum()
-                total += len(targets)
-
-            scheduler.step()
-            train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
-            if epoch%5==0:
-                test_acc = self._compute_accuracy(self._network, test_loader)
-                info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}, Test_accy {:.2f}'.format(
-                self._cur_task, epoch+1, self._epochs, losses/len(train_loader), train_acc, test_acc)
+    def _epoch_train(self, model, train_loader, optimizer, scheduler):
+        losses = 0.
+        correct, total = 0, 0
+        model.train()
+        for _, inputs, targets in train_loader:
+            inputs, targets = inputs.cuda(), targets.cuda()
+            logits = model(inputs)['logits']
+            
+            loss_clf = cross_entropy(logits, targets)
+            if self._cur_task == 0:
+                loss = loss_clf
             else:
-                info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}'.format(
-                self._cur_task, epoch+1, self._epochs, losses/len(train_loader), train_acc)
-            prog_bar.set_description(info)
-        logging.info(info)
+                loss_kd = self._KD_loss(logits[:,:self._known_classes],self._old_network(inputs)["logits"],self._T)
+                loss = loss_clf + loss_kd
 
+            preds = torch.max(logits, dim=1)[1]
+    
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            losses += loss.item()
 
-def _KD_loss(pred, soft, T):
-    pred = torch.log_softmax(pred/T, dim=1)
-    soft = torch.softmax(soft/T, dim=1)
-    return -1 * torch.mul(soft, pred).sum()/pred.shape[0]
+            correct += preds.eq(targets).cpu().sum()
+            total += len(targets)
+        
+        scheduler.step()
+        train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
+        train_loss = losses/len(train_loader)
+        return model, train_acc, train_loss
+
+    def after_task(self):
+        super().after_task()
+        self._old_network = self._network.copy().freeze()
+        
+    def _KD_loss(self, pred, soft, T):
+        pred = torch.log_softmax(pred/T, dim=1)
+        soft = torch.softmax(soft/T, dim=1)
+        return -1 * torch.mul(soft, pred).sum()/pred.shape[0]

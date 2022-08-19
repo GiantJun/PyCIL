@@ -32,7 +32,9 @@ if __name__ == '__main__':
             trainer = factory.get_trainer(temp_config, tblog)
 
             for task in range(data_manager.nb_tasks):
-                trainer.incremental_train(data_manager)
+                trainer.prepare_task_data(data_manager)
+                trainer.prepare_model()
+                trainer.incremental_train()
                 trainer.eval_task(data_manager)
                 trainer.after_task()
     except Exception as e:

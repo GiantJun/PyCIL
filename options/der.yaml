@@ -1,9 +1,7 @@
 ######### Basic Settings #########
 basic:
-    prefix: reproduce
-    device: ['1']
+    device: '1'
     seed: [1993] # icarl 官方代码给的种子是 1993
-    num_workers: 4
 
     # Dataset Choises: cifar100, cifar100, imagenet100, imagenet1000, tinyimagenet,
     # skin7, sd198(also known as skin40), mymedmnist
@@ -24,6 +22,7 @@ basic:
     ######### Exampler Hyperparameters #########
     memory_size: 2000
     fixed_memory: false
+    sampling_method: icarl # icarl, random, closest_to_mean 
 
     ######### Task Settings, unimportant in Joint #########
     # for some datasets(e.g. MedMNist), this will be ignored
@@ -34,20 +33,24 @@ basic:
 ######### Method's Hyperparameters #########
 special:
     incre_type: cil
+    T: 2
 
 ######### Experiment Settings for Datasets #########
 options:
     # experiment settings for cifar100
     cifar100: 
-        resnet32: 
-            init_epochs: 200
+        resnet32:
+            opt_type: adam
+            init_epochs: 200 # 200
             init_lrate: 0.1
+            init_scheduler: multi_step
             init_milestones: [60,120,170]
             init_lrate_decay: 0.1
             init_weight_decay: 0.0005
 
             epochs: 170
             lrate: 0.1
+            scheduler: multi_step
             milestones: [80, 120, 150]
             lrate_decay: 0.1
             batch_size: 128

@@ -1,7 +1,6 @@
 ######### Basic Settings #########
 basic:
-    prefix: reproduce
-    device: '0'
+    device: '1'
     seed: [1993] # icarl 官方代码给的种子是 1993
     num_workers: 4
 
@@ -41,18 +40,22 @@ special:
 options:
     # experiment settings for cifar100
     cifar100: 
-        resnet32: 
-            init_epoch: 200
-            init_lr: 0.1
+        resnet32:
+            opt_type: adam  
+            init_epochs: 200 #200
+            init_lrate: 0.1
+            init_scheduler: multi_step
             init_milestones: [60,120,170]
-            init_lr_decay: 0.1
+            init_lrate_decay: 0.1
             init_weight_decay: 0.0005
 
-            epochs: 170
+            epochs: 170 #80
             lrate: 0.1
+            scheduler: multi_step
             milestones: [80, 120]
             lrate_decay: 0.1
             batch_size: 128
             weight_decay: 0.0002
             num_workers: 8
+
             

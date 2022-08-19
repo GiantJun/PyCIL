@@ -56,7 +56,7 @@ def split_images_labels(imgs):
 
 def set_logger(config, ret_tblog=True) -> SummaryWriter:
     nowTime = datetime.datetime.now().strftime('_%Y-%m-%d-%H-%M-%S')
-    logdir = 'logs/{}_{}/{}/{}_b{}i{}'.format(config.method, config.incre_type, config.dataset, config.backbone, config.init_cls, config.increment)
+    logdir = 'logs/{}_{}_replay_{}/{}/{}_b{}i{}'.format(config.method, config.incre_type, config.sampling_method, config.dataset, config.backbone, config.init_cls, config.increment)
     if os.path.exists(logdir):
         logdir = logdir + nowTime
     check_makedirs(logdir)

@@ -7,46 +7,21 @@ from torch import optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from methods.base import BaseLearner
-from backbone.inc_net import DERNet, IncrementalNet
+from backbone.inc_net import DERNet
 from utils.toolkit import count_parameters, target2onehot, tensor2numpy
 
 EPSILON = 1e-8
-
-# init_epoch=200
-# init_lr=0.1
-# init_milestones=[60,120,170]
-# init_lr_decay=0.1
-# init_weight_decay=0.0005
-
-
-# epochs = 170
-# lrate = 0.1
-# milestones = [80, 120,150]
-# lrate_decay = 0.1
-# batch_size = 128
-# weight_decay=2e-4
-# num_workers=8
-# T=2
-
 
 class DER(BaseLearner):
 
     def __init__(self, config):
         super().__init__(config)
-        self._init_epoch = config.init_epoch
-        self._init_lr = config.init_lr
-        self._init_milestones = config.init_milestones
-        self._init_lr_decay = config.init_lr_decay
-        self._init_weight_decay = config.init_weight_decay
         self._network = DERNet(config.backbone, config.pretrained)
-
-    def after_task(self):
-        self._known_classes = self._total_classes
-        logging.info('Exemplar size: {}'.format(self.exemplar_size))
 
     def incremental_train(self, data_manager):
         self._cur_task += 1
-        self._total_classes = self._known_classes + data_manager.get_task_size(self._cur_task)
+        self._cur_classes = data_manager.get_task_size(self._cur_task)
+        self._total_classes = self._known_classes + self._cur_classes
         self._network.update_fc(self._total_classes)
         logging.info('Learning on {}-{}'.format(self._known_classes, self._total_classes))
 
@@ -138,7 +113,7 @@ class DER(BaseLearner):
     def _update_representation(self, train_loader, test_loader, optimizer, scheduler):
         prog_bar = tqdm(range(self._epochs))
         for _, epoch in enumerate(prog_bar):
-            self.train()
+            self.train() 
             losses = 0.
             losses_clf=0.
             losses_aux=0.

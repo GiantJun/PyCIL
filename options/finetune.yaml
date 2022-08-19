@@ -1,8 +1,7 @@
 ######### Basic Settings #########
 basic:
-    device: '4'
+    device: '1'
     seed: [1993] # icarl 官方代码给的种子是 1993
-    num_workers: 8
 
     # Dataset Choises: cifar100, cifar100, imagenet100, imagenet1000, tinyimagenet,
     # skin7, sd198(also known as skin40), mymedmnist
