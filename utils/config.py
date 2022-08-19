@@ -108,6 +108,13 @@ class Config:
                     setattr(self, name, value)
                     self.init_overwrite_names.append(name)
             print('Loaded config file: {}'.format(self.config))
+        
+        self.init_epochs = self.epochs if self.init_epochs == None else self.init_epochs
+        self.init_lrate = self.lrate if self.init_lrate == None else self.init_lrate
+        self.init_scheduler = self.scheduler if self.init_scheduler == None else self.init_scheduler
+        self.init_milestones = self.milestones if self.init_milestones == None else self.init_milestones
+        self.init_lrate_decay = self.lrate_decay if self.init_lrate_decay == None else self.init_lrate_decay
+        self.init_weight_decay = self.weight_decay if self.init_weight_decay == None else self.init_weight_decay
     
     def get_save_config(self) -> dict:
         result = {}

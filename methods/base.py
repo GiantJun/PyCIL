@@ -58,9 +58,11 @@ class BaseLearner(object):
         self._history_epochs = 0
 
         self._epochs = config.epochs
-        self._init_epochs = config.epochs if config.init_epochs == None else config.init_epochs
+        self._init_epochs = config.init_epochs
         self._batch_size = config.batch_size
         self._num_workers = config.num_workers
+
+        
 
     @property
     def cur_taskID(self):
