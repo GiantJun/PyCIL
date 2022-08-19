@@ -15,6 +15,8 @@ basic:
     # eval_metric Choises: acc, recall
     eval_metric: acc
 
+    apply_nme: true
+
     # Backbone Choises: resnet18, resnet18_cbam, cosine_resnet18, 
     # resnet32, cosine_resnet32, resnet34, cosine_resnet34, resnet50
     backbone: resnet32

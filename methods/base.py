@@ -35,6 +35,7 @@ class BaseLearner(object):
 
         self._method = config.method
         self._incre_type = config.incre_type
+        self._apply_nme = config.apply_nme
         self._dataset = config.dataset
         self._backbone = config.backbone
         self._seed = config.seed
@@ -47,7 +48,7 @@ class BaseLearner(object):
             self._memory_per_class = config.memory_per_class
         self._memory_bank = None
         if (self._memory_size != None and self._fixed_memory != None and 
-            self._sampling_method != None):
+            self._sampling_method != None and self._incre_type == 'cil'):
             self._memory_bank = ReplayBank(self._config)
             logging.info('Memory bank created!')
 
@@ -93,7 +94,7 @@ class BaseLearner(object):
     def incremental_train(self):
         if len(self._multiple_gpus) > 1:
             self._network = nn.DataParallel(self._network, self._multiple_gpus)
-
+        logging.info('Learning on {}-{}'.format(self._known_classes, self._total_classes-1))
         self._network = self._train_model(self._network, self._train_loader, self._test_loader)
 
         if len(self._multiple_gpus) > 1:
@@ -109,14 +110,16 @@ class BaseLearner(object):
         else:
             epochs = self._epochs
         for epoch in range(epochs):
-            model, train_acc, train_loss = self._epoch_train(model, train_loader, optimizer, scheduler)
+            model, train_acc, train_losses = self._epoch_train(model, train_loader, optimizer, scheduler)
             test_acc = self._epoch_test(model, test_loader)
-            info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Train_accy {:.2f}, Test_accy {:.2f}'.format(
-            self._cur_task, epoch+1, epochs, train_loss, train_acc, test_acc)
+            info = ('Task {}, Epoch {}/{} => '.format(self._cur_task, epoch+1, epochs) + 
+            ('{} {:.3f}, '* int(len(train_losses)/2)).format(*train_losses) +
+            'Train_accy {:.2f}, Test_accy {:.2f}'.format(train_acc, test_acc))
             
-            self._tblog.add_scalar('seed{}_train/loss'.format(self._seed), train_loss, self._history_epochs+epoch)
-            self._tblog.add_scalar('seed{}_train/acc'.format(self._seed), train_acc, self._history_epochs+epoch)
-            self._tblog.add_scalar('seed{}_test/acc'.format(self._seed), test_acc, self._history_epochs+epoch)
+            for i in range(int(len(train_losses)/2)):
+                self._tblog.add_scalar('seed{}_train/{}'.format(self._seed, train_losses[i*2]), train_losses[i*2+1], self._history_epochs+epoch)
+            self._tblog.add_scalar('seed{}_train/Acc'.format(self._seed), train_acc, self._history_epochs+epoch)
+            self._tblog.add_scalar('seed{}_test/Acc'.format(self._seed), test_acc, self._history_epochs+epoch)
             logging.info(info)
         
         self._history_epochs += epochs
@@ -149,7 +152,7 @@ class BaseLearner(object):
         
         scheduler.step()
         train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
-        train_loss = losses/len(train_loader)
+        train_loss = ['Loss', losses/len(train_loader)]
         return model, train_acc, train_loss
     
     def _epoch_test(self, model, test_loader, ret_pred_target=False):
@@ -159,18 +162,18 @@ class BaseLearner(object):
         for _, inputs, targets in test_loader:
             inputs, targets = inputs.cuda(), targets.cuda()
             if self._incre_type == 'cil':
-                logits = model(inputs)['logits']
-                cnn_preds = torch.max(logits, dim=1)[1]
+                outputs = model(inputs)
+                cnn_preds = torch.max(outputs['logits'], dim=1)[1]
             elif self._incre_type == 'til':
-                logits = model.forward_til(inputs, self._cur_task)['logits']
-                cnn_preds = torch.max(logits, dim=1)[1] + self._known_classes
+                outputs = model.forward_til(inputs, self._cur_task)
+                cnn_preds = torch.max(outputs['logits'], dim=1)[1] + self._known_classes
                 
             if ret_pred_target:
-                if self._memory_bank != None:
-                    nme_pred = self._memory_bank.KNN_classify(logits['features'])
+                if self._memory_bank != None and self._apply_nme:
+                    nme_pred = self._memory_bank.KNN_classify(outputs['features'])
                     nme_pred_all.append(tensor2numpy(nme_pred))
                 cnn_pred_all.append(tensor2numpy(cnn_preds))
-                target_all.append(targets)
+                target_all.append(tensor2numpy(targets))
             else:
                 cnn_correct += cnn_preds.eq(targets).cpu().sum()
                 total += len(targets)
@@ -197,7 +200,7 @@ class BaseLearner(object):
         logging.info("log {} of every task".format(self._eval_metric))
         logging.info(50*"-")
         if self._incre_type == 'cil':
-            cnn_pred, nme_pred, y_true = self.get_cil_pred_target(self._network, self.test_loader, ret_pred_target=True)
+            cnn_pred, nme_pred, y_true = self.get_cil_pred_target(self._network, self._test_loader)
         elif self._incre_type == 'til':
             cnn_pred, nme_pred, y_true = self.get_til_pred_target(self._network, data_manager)
 

@@ -1,4 +1,5 @@
 from methods.base import BaseLearner
+from methods.joint import Joint
 from methods.coil import COIL
 from methods.der import DER
 from methods.ewc import EWC
@@ -17,6 +18,8 @@ def get_trainer(config, tblog) -> BaseLearner:
     name = config.method.lower()
     if name in ['finetune', 'finetune_replay']:
         return BaseLearner(config, tblog)
+    elif name == 'joint':
+        return Joint(config, tblog)
     elif name == 'icarl':
         return iCaRL(config, tblog)
     elif name == 'bic':

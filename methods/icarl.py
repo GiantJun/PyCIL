@@ -26,16 +26,20 @@ class iCaRL(BaseLearner):
     def _epoch_train(self, model, train_loader, optimizer, scheduler):
         losses = 0.
         correct, total = 0, 0
+        losses_clf = 0.
+        losses_kd = 0.
         model.train()
         for _, inputs, targets in train_loader:
             inputs, targets = inputs.cuda(), targets.cuda()
             logits = model(inputs)['logits']
             
             loss_clf = cross_entropy(logits, targets)
+            losses_clf += loss_clf.item()
             if self._cur_task == 0:
                 loss = loss_clf
             else:
                 loss_kd = self._KD_loss(logits[:,:self._known_classes],self._old_network(inputs)["logits"],self._T)
+                losses_kd += loss_kd.item()
                 loss = loss_clf + loss_kd
 
             preds = torch.max(logits, dim=1)[1]
@@ -50,7 +54,7 @@ class iCaRL(BaseLearner):
         
         scheduler.step()
         train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
-        train_loss = losses/len(train_loader)
+        train_loss = ['Loss', losses/len(train_loader), 'Loss_clf', losses_clf/len(train_loader), 'Loss_kd', losses_kd/len(train_loader)]
         return model, train_acc, train_loss
 
     def after_task(self):

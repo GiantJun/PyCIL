@@ -44,6 +44,8 @@ class Config:
         
         parser.add_argument('--method', type=str, default=None, help='methods to apply')
 
+        parser.add_argument('--apply_nme', type=bool, default=None, help='whether apply nme to classify') 
+
         parser.add_argument('--incre_type', type=str, default=None, help='Incremental type e.t. cil or til')
         parser.add_argument('--pretrained', type=bool, default=None, help='whether use pretrained network weights to initial the network')
         parser.add_argument('--pretrain_path', type=str, default=None, help='prtrained network weights path to load')
