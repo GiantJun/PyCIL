@@ -62,8 +62,6 @@ class BaseLearner(object):
         self._batch_size = config.batch_size
         self._num_workers = config.num_workers
 
-        
-
     @property
     def cur_taskID(self):
         return self._cur_task
@@ -99,7 +97,7 @@ class BaseLearner(object):
     def incremental_train(self):
         if len(self._multiple_gpus) > 1:
             self._network = nn.DataParallel(self._network, self._multiple_gpus)
-        logging.info('-'*10 + ' Learning on task {} : {}-{} '.format(self._cur_task, self._known_classes, self._total_classes-1) + '-'*10)
+        logging.info('-'*10 + ' Learning on task {}: {}-{} '.format(self._cur_task, self._known_classes, self._total_classes-1) + '-'*10)
         self._network = self._train_model(self._network, self._train_loader, self._test_loader)
 
         if len(self._multiple_gpus) > 1:
@@ -108,7 +106,7 @@ class BaseLearner(object):
 
     def _train_model(self, model, train_loader, test_loader):
         self._network.cuda()
-        optimizer = self._get_optimizer(self._network, self._config, self._cur_task==0)
+        optimizer = self._get_optimizer(filter(lambda p: p.requires_grad, model.parameters()), self._config, self._cur_task==0)
         scheduler = self._get_scheduler(optimizer, self._config, self._cur_task==0)
         if self._cur_task == 0:
             epochs = self._init_epochs
@@ -185,7 +183,7 @@ class BaseLearner(object):
         
         if ret_pred_target:
             cnn_pred_all = np.concatenate(cnn_pred_all)
-            nme_pred_all = np.concatenate(nme_pred_all) if len(nme_pred) != 0 else nme_pred_all
+            nme_pred_all = np.concatenate(nme_pred_all) if len(nme_pred_all) != 0 else nme_pred_all
             target_all = np.concatenate(target_all)
             return cnn_pred_all, nme_pred_all, target_all
         else:
@@ -312,20 +310,20 @@ class BaseLearner(object):
         return np.concatenate(vectors), np.concatenate(targets)
     
 
-    def _get_optimizer(self, model, config, is_init):
+    def _get_optimizer(self, params, config, is_init):
         optimizer = None
         if is_init:
             if config.opt_type == 'sgd':
-                optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), momentum=0.9, lr=config.init_lrate, weight_decay=config.init_weight_decay)
+                optimizer = optim.SGD(params, momentum=0.9, lr=config.init_lrate, weight_decay=config.init_weight_decay)
             elif config.opt_type == 'adam':
-                optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.init_lrate)
+                optimizer = optim.Adam(params, lr=config.init_lrate)
             else: 
                 raise ValueError('No optimazer: {}'.format(config.opt_type))
         else:
             if config.opt_type == 'sgd':
-                optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), momentum=0.9, lr=config.lrate, weight_decay=config.weight_decay)
+                optimizer = optim.SGD(params, momentum=0.9, lr=config.lrate, weight_decay=config.weight_decay)
             elif config.opt_type == 'adam':
-                optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.lrate)
+                optimizer = optim.Adam(params, lr=config.lrate)
             else: 
                 raise ValueError('No optimazer: {}'.format(config.opt_type))
         return optimizer
@@ -338,13 +336,13 @@ class BaseLearner(object):
             elif config.scheduler == 'cos':
                 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=config.init_epochs)
             else: 
-                raise ValueError('No optimazer: {}'.format(config.scheduler))
+                raise ValueError('No scheduler: {}'.format(config.scheduler))
         else:
             if config.scheduler == 'multi_step':
                 scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=config.milestones, gamma=config.lrate_decay)
             elif config.scheduler == 'cos':
                 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=config.epochs)
             else: 
-                raise ValueError('No optimazer: {}'.format(config.scheduler))
+                raise ValueError('No scheduler: {}'.format(config.scheduler))
         return scheduler
     

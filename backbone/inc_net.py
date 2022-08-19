@@ -50,7 +50,7 @@ def get_backbone(convnet_type, pretrained=False, pretrain_path=None, normed=Fals
 
 class BaseNet(nn.Module):
 
-    def __init__(self, convnet_type, pretrained, pretrain_path):
+    def __init__(self, convnet_type, pretrained, pretrain_path=None):
         super(BaseNet, self).__init__()
 
         self.convnet = get_backbone(convnet_type, pretrained, pretrain_path)

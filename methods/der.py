@@ -31,34 +31,6 @@ class DER(BaseLearner):
         logging.info('All params: {}'.format(count_parameters(self._network)))
         logging.info('Trainable params: {}'.format(count_parameters(self._network, True)))
 
-    def incremental_train(self, data_manager):
-        self._cur_task += 1
-        self._cur_classes = data_manager.get_task_size(self._cur_task)
-        self._total_classes = self._known_classes + self._cur_classes
-        self._network.update_fc(self._total_classes)
-        logging.info('Learning on {}-{}'.format(self._known_classes, self._total_classes))
-
-        if self._cur_task>0:
-            for i in range(self._cur_task):
-                for p in self._network.convnets[i].parameters():
-                    p.requires_grad = False
-
-        logging.info('All params: {}'.format(count_parameters(self._network)))
-        logging.info('Trainable params: {}'.format(count_parameters(self._network, True)))
-        
-        
-        train_dataset = data_manager.get_dataset(np.arange(self._known_classes, self._total_classes), source='train',
-                                                 mode='train', appendent=self._get_memory())
-        self.train_loader = DataLoader(train_dataset, batch_size=self._batch_size, shuffle=True, num_workers=self._num_workers)
-        test_dataset = data_manager.get_dataset(np.arange(0, self._total_classes), source='test', mode='test')
-        self.test_loader = DataLoader(test_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
-
-        if len(self._multiple_gpus) > 1:
-            self._network = nn.DataParallel(self._network, self._multiple_gpus)
-        self._train(self.train_loader, self.test_loader)
-        self.build_rehearsal_memory(data_manager, self.samples_per_class)
-        if len(self._multiple_gpus) > 1:
-            self._network = self._network.module
 
     def incremental_train(self):
         if len(self._multiple_gpus) > 1:
@@ -92,7 +64,7 @@ class DER(BaseLearner):
         for _, inputs, targets in train_loader:
             inputs, targets = inputs.cuda(), targets.cuda()
 
-            outputs = model(inputs)['logits']
+            outputs = model(inputs)
             logits, aux_logits = outputs["logits"], outputs["aux_logits"]
             
             loss_clf = cross_entropy(logits, targets)
@@ -115,5 +87,5 @@ class DER(BaseLearner):
         
         scheduler.step()
         train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
-        train_loss = ['Loss', losses/len(train_loader), 'Loss_clf', losses_clf/len(train_loader), losses_aux/len(train_loader)]
+        train_loss = ['Loss', losses/len(train_loader), 'Loss_clf', losses_clf/len(train_loader), 'Loss_aux', losses_aux/len(train_loader)]
         return model, train_acc, train_loss

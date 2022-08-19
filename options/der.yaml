@@ -50,7 +50,7 @@ options:
             init_lrate_decay: 0.1
             init_weight_decay: 0.0005
 
-            epochs: 170
+            epochs: 170 # 170
             lrate: 0.1
             scheduler: multi_step
             milestones: [80, 120, 150]
