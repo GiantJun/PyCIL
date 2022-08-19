@@ -14,7 +14,6 @@ from torch import optim
 from torch.nn.functional import cross_entropy
 
 EPSILON = 1e-8
-# batch_size = 64
 
 # base is finetune with or without memory_bank
 class BaseLearner(object):
@@ -63,6 +62,10 @@ class BaseLearner(object):
         self._batch_size = config.batch_size
         self._num_workers = config.num_workers
 
+    @property
+    def cur_taskID(self):
+        return self._cur_task
+
     def prepare_task_data(self, data_manager):
         self._cur_task += 1
         self._cur_classes = data_manager.get_task_size(self._cur_task)
@@ -94,7 +97,7 @@ class BaseLearner(object):
     def incremental_train(self):
         if len(self._multiple_gpus) > 1:
             self._network = nn.DataParallel(self._network, self._multiple_gpus)
-        logging.info('Learning on {}-{}'.format(self._known_classes, self._total_classes-1))
+        logging.info('-'*10 + ' Learning on task {} : {}-{} '.format(self._cur_task, self._known_classes, self._total_classes-1) + '-'*10)
         self._network = self._train_model(self._network, self._train_loader, self._test_loader)
 
         if len(self._multiple_gpus) > 1:
