@@ -1,6 +1,6 @@
 ######### Basic Settings #########
 basic:
-    device: '1'
+    device: '4'
     seed: [1993] # icarl 官方代码给的种子是 1993
 
     # Dataset Choises: cifar100, cifar100, imagenet100, imagenet1000, tinyimagenet,
@@ -39,7 +39,7 @@ options:
         resnet32:
             opt_type: adam
             epochs: 200 #80
-            lrate: 0.1
+            lrate: 0.001
             scheduler: multi_step
             milestones: [60,120,160]
             lrate_decay: 0.1

@@ -109,7 +109,10 @@ class BiC(BaseLearner):
         scheduler.step()
         train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
         if stage == 'training':
-            train_loss = ['Loss', losses/len(train_loader), 'Loss_clf', clf_losses/len(train_loader), 'Loss_distill', distill_losses/len(train_loader)]
+            if self._old_network != None:
+                train_loss = ['Loss', losses/len(train_loader), 'Loss_clf', clf_losses/len(train_loader), 'Loss_distill', distill_losses/len(train_loader)]
+            else:
+                train_loss = ['Loss_clf', clf_losses/len(train_loader)]
         else:
             train_loss = ['Loss_clf', losses/len(train_loader)]
         return model, train_acc, train_loss
