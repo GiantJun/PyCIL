@@ -93,10 +93,12 @@ class Config:
         parser.add_argument('--ft_epochs', type=int, default=None, help='ft_epochs for podnet') # podnet
         parser.add_argument('--ft_lrate', type=float, default=None, help='ft_lrate for podnet') # podnet
 
-        parser.add_argument('--bn_type', type=str, default=None, help='mode for multi_bn method, e.g. default, last, first')
-
         # multi-bn
         parser.add_argument('--multi_bn_type', type=str, default=None, help='different type of multi-bn, e.g. default,last,first,pretrained')
+
+        # CNNPrompt
+        parser.add_argument('--prompt_size', type=int, default=None, help='prompt img size')
+        parser.add_argument('--gamma', type=float, default=None, help='gamma to adjust prompt and origin img')
 
         for name, value in vars(parser.parse_args()).items():
             setattr(self, name, value)

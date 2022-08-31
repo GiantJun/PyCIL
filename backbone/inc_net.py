@@ -1,6 +1,6 @@
 import copy
 import torch
-from torch import nn
+from torch import nn, rand
 import logging
 from backbone.cifar_resnet import resnet32
 import torchvision.models as torch_models
@@ -98,11 +98,15 @@ class BaseNet(nn.Module):
 class IncrementalNet(BaseNet):
 
     def __init__(self, convnet_type, pretrained, pretrain_path=None, gradcam=False):
-        super().__init__(convnet_type, pretrained, pretrain_path)
+        super(IncrementalNet, self).__init__(convnet_type, pretrained, pretrain_path)
         self.gradcam = gradcam
         if hasattr(self, 'gradcam') and self.gradcam:
             self._gradcam_hooks = [None, None]
             self.set_gradcam_hook()
+    
+    @property
+    def feature_dim(self):
+        return self.convnet.out_dim
 
     def update_fc(self, nb_classes):
         fc = self.generate_fc(self.feature_dim, nb_classes)
@@ -397,3 +401,28 @@ class SimpleCosineIncrementalNet(BaseNet):
     def generate_fc(self, in_dim, out_dim):
         fc = CosineLinear(in_dim, out_dim)
         return fc
+
+class CNNPromptNet(IncrementalNet):
+    def __init__(self, convnet_type, pretrained, pretrain_path=None, prompt_size=32, gamma=1.):
+        super().__init__(convnet_type, pretrained, pretrain_path)
+        self.gamma = gamma
+        self.prompt = nn.Parameter(rand((1,3,prompt_size,prompt_size)))
+
+    def forward(self, x):
+        prompt = self.prompt.expand(x.shape[0], 3, -1, -1)
+        x_out = self.convnet(x)['features']
+        prompt_out = self.convnet(prompt)['features']
+        out = self.fc(x_out+self.gamma*prompt_out)
+        out.update({'features': x_out+self.gamma*prompt_out})
+        
+        return out
+    
+    def freeze(self):
+        for name, param in self.named_parameters():
+            if 'fc' in name or 'prompt' in name:
+                param.requires_grad = True
+                logging.info('{} require grad=True'.format(name))
+            else:
+                param.requires_grad = False
+        self.eval()
+        return self

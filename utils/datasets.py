@@ -4,6 +4,7 @@ from utils.toolkit import split_images_labels
 import os
 from PIL import Image
 import sys
+import pandas as pd
 
 class iData(object):
     train_trsf = []

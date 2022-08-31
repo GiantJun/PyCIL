@@ -89,6 +89,13 @@ class BaseLearner(object):
             self._network.update_fc(self._total_classes)
         elif self._incre_type == 'til':
             self._network.update_til_fc(self._cur_classes)
+        if self._config.freeze:
+            for name, param in self.named_parameters():
+                if 'fc' in name:
+                    param.requires_grad = True
+                    logging.info('{} require grad=True'.format(name))
+                else:
+                    param.requires_grad = False
         logging.info('All params: {}'.format(count_parameters(self._network)))
         logging.info('Trainable params: {}'.format(count_parameters(self._network, True)))
 
