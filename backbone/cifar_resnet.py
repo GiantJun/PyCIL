@@ -150,6 +150,7 @@ class CifarResNet(nn.Module):
             'fmaps': [x_1, x_2, x_3],
             'features': features
         }
+        # return self.fc(features)
 
     @property
     def last_conv(self):

@@ -1,4 +1,5 @@
 import copy
+from typing import Iterable
 import torch
 from torch import nn, rand
 import logging
@@ -10,6 +11,7 @@ from backbone.ucir_resnet import resnet34 as cosine_resnet34
 from backbone.ucir_resnet import resnet50 as cosine_resnet50
 from backbone.linears import SimpleLinear, SplitCosineLinear, CosineLinear
 from backbone.cifar_resnet_cbam import resnet18_cbam as resnet18_cbam
+from typing import Callable
 
 
 def get_backbone(convnet_type, pretrained=False, pretrain_path=None, normed=False):
@@ -17,18 +19,26 @@ def get_backbone(convnet_type, pretrained=False, pretrain_path=None, normed=Fals
     net = None
     if name in torch_models.__dict__.keys():
         net = torch_models.__dict__[name](pretrained=pretrained)
+        # if 'resnet' in name:
+        #     net.fc = nn.Sequential()
     elif name == 'resnet32':
         net = resnet32()
+        # net.fc = nn.Sequential()
     elif name == 'cosine_resnet18':
         net = cosine_resnet18(pretrained=pretrained)
+        # net.fc = nn.Sequential()
     elif name == 'cosine_resnet32':
         net = cosine_resnet32()
+        # net.fc = nn.Sequential()
     elif name == 'cosine_resnet34':
         net = cosine_resnet34(pretrained=pretrained)
+        # net.fc = nn.Sequential()
     elif name == 'cosine_resnet50':
         net = cosine_resnet50(pretrained=pretrained)
+        # net.fc = nn.Sequential()
     elif name == 'resnet18_cbam':
         net = resnet18_cbam(normed=normed)
+        # net.fc = nn.Sequential()
     else:
         raise NotImplementedError('Unknown type {}'.format(convnet_type))
     logging.info('Created {} !'.format(name))
@@ -51,11 +61,23 @@ def get_backbone(convnet_type, pretrained=False, pretrain_path=None, normed=Fals
 class BaseNet(nn.Module):
 
     def __init__(self, convnet_type, pretrained, pretrain_path=None):
+    # def __init__(self, convnet_type, pretrained, pretrain_path=None, layer_names: Iterable[str]=['layer1','layer2','layer3','layer4']):
         super(BaseNet, self).__init__()
-
         self.convnet = get_backbone(convnet_type, pretrained, pretrain_path)
         self.fc = None
         self.fc_til = None
+        # self.layer_names = layer_names
+        # self.features = {layer: torch.empty(0) for layer in layer_names}
+
+        # model_dict = dict([*self.convnet.named_modules()]) 
+        # for layer_id in layer_names:
+        #     layer = model_dict[layer_id]
+        #     layer.register_forward_hook(self.save_features(layer_id))
+    
+    # def save_features(self, layer_id: str) -> Callable:
+    #     def func(module, input, output):
+    #         self.features[layer_id] = output
+    #     return func
 
     @property
     def feature_dim(self):
@@ -100,9 +122,10 @@ class IncrementalNet(BaseNet):
     def __init__(self, convnet_type, pretrained, pretrain_path=None, gradcam=False):
         super(IncrementalNet, self).__init__(convnet_type, pretrained, pretrain_path)
         self.gradcam = gradcam
+        # self._features = 
         if hasattr(self, 'gradcam') and self.gradcam:
             self._gradcam_hooks = [None, None]
-            self.set_gradcam_hook()
+            self.set_gradcam_hook()        
     
     @property
     def feature_dim(self):
@@ -140,7 +163,6 @@ class IncrementalNet(BaseNet):
 
     def generate_fc(self, in_dim, out_dim):
         fc = SimpleLinear(in_dim, out_dim)
-
         return fc
 
     def forward(self, x):
@@ -421,7 +443,6 @@ class CNNPromptNet(IncrementalNet):
         for name, param in self.named_parameters():
             if 'fc' in name or 'prompt' in name:
                 param.requires_grad = True
-                logging.info('{} require grad=True'.format(name))
             else:
                 param.requires_grad = False
         self.eval()
