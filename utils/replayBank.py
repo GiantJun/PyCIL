@@ -20,10 +20,7 @@ class ReplayBank:
         # 另一种在固定存储空间中，平均分配每一类允许存储的样本数量
         self._fixed_memory = config.fixed_memory
         if self._fixed_memory:
-            if config.memory_per_class == None:
-                raise ValueError('if apply fixed memory, memory_per_class should not be None !')
-            else:
-                self._memory_per_class = config.memory_per_class
+            self._memory_per_class = config.memory_per_class = int(self._memory_size / config.task_num)
         self._sampling_method = config.sampling_method # 采样的方式
 
         self._data_memory = [] # 第一维长度为类别数，第二维为每一类允许存放的样本数
@@ -39,6 +36,20 @@ class ReplayBank:
             per_class = self._memory_size // (len(self._data_memory) + len(class_range))
             if len(self._data_memory) != 0:
                 self.reduce_memory(per_class)
+        
+        class_means = []
+        logging.info('Re-calculating class means for stored classes...')
+        for class_idx, class_samples in enumerate(self._data_memory):
+            idx_dataset = data_manager.get_dataset([], source='train', mode='test', 
+                                appendent=(class_samples, np.full(len(class_samples), class_idx)))
+            idx_loader = DataLoader(idx_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
+
+            idx_vectors = self._extract_vectors(model, idx_loader)
+            idx_vectors = F.normalize(idx_vectors, dim=1)# 对特征向量做归一化
+            mean = torch.mean(idx_vectors, dim=0)
+            mean = F.normalize(mean, dim=0)
+            class_means.append(mean.unsqueeze(0))
+            logging.info('calculated class mean of class {}'.format(class_idx))
 
         logging.info('Constructing exemplars for the sequence of {} new classes...'.format(len(class_range)))
         for class_idx in class_range:
@@ -46,45 +57,24 @@ class ReplayBank:
                                                                   mode='test', ret_data=True)
             logging.info("New Class {} instance will be stored: {} => {}".format(class_idx, len(targets), per_class))
             idx_loader = DataLoader(idx_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
-            vectors = self._extract_vectors(model, idx_loader)
-            if self._sampling_method == 'icarl':
-                selected_idx = self.icarl_select(vectors, per_class)
-            elif self._sampling_method == 'random':
-                selected_idx = self.random_select(vectors, per_class)
-            elif self._sampling_method == 'closest_to_mean':
-                selected_idx = self.closest_to_mean_select(vectors, per_class)
-            
-            self._data_memory.append(data[selected_idx])
-            self._vector_memory.append(vectors[selected_idx].cpu().numpy())
-        
-        logging.info('Replay Bank stored {} classes, {} samples for each class'.format(len(self._data_memory), per_class))
-        self.caculate_class_mean(model, data_manager.get_dataset) #传入函数名
-
-    def caculate_class_mean(self, model, get_dataset):
-        logging.info('Calculating Class Means')
-        # 重新计算旧类类中心
-        class_means = []
-        for class_idx, class_samples in enumerate(self._data_memory):
-            idx_dataset = get_dataset([], source='train', mode='test', 
-                                appendent=(class_samples, np.full(len(class_samples), class_idx)))
-            idx_loader = DataLoader(idx_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
-            
-            flip_dataset = get_dataset([], source='train', mode='flip', 
-                                appendent=(class_samples, np.full(len(class_samples), class_idx)))
-            flip_loader = DataLoader(flip_dataset, batch_size=self._batch_size, shuffle=False, num_workers=self._num_workers)
-
             idx_vectors = self._extract_vectors(model, idx_loader)
-            flip_vectors = self._extract_vectors(model, flip_loader)
-
-            idx_vectors = F.normalize(idx_vectors, dim=1)# 对特征向量做归一化
-            flip_vectors = F.normalize(flip_vectors, dim=1)
+            if self._sampling_method == 'icarl':
+                selected_idx = self.icarl_select(idx_vectors, per_class)
+            elif self._sampling_method == 'random':
+                selected_idx = self.random_select(idx_vectors, per_class)
+            elif self._sampling_method == 'closest_to_mean':
+                selected_idx = self.closest_to_mean_select(idx_vectors, per_class)
             
-            # mean = (torch.mean(idx_vectors, dim=0) + torch.mean(flip_vectors, dim=0)) /2
-            mean = torch.mean(idx_vectors, dim=0)
+            # 计算类中心
+            mean = torch.mean(idx_vectors[selected_idx], dim=0)
             mean = F.normalize(mean, dim=0)
             class_means.append(mean.unsqueeze(0))
             logging.info('calculated class mean of class {}'.format(class_idx))
+
+            self._data_memory.append(data[selected_idx])
+            self._vector_memory.append(idx_vectors[selected_idx].cpu().numpy())
         
+        logging.info('Replay Bank stored {} classes, {} samples for each class'.format(len(self._data_memory), per_class))
         self._class_means = torch.cat(class_means)
 
     def random_select(self, vectors, m):
@@ -106,7 +96,7 @@ class ReplayBank:
         class_mean = torch.mean(nomalized_vector, dim=0)
         for k in range(1, m+1):
             sub_vectors = nomalized_vector[all_idxs]
-            S = torch.sum(sub_vectors, axis=0)
+            S = torch.sum(nomalized_vector[selected_idx], dim=0)
             mu_p = (sub_vectors + S) / k
             i = torch.argmin(torch.norm(class_mean-mu_p, p=2, dim=1))
             selected_idx.append(all_idxs.pop(i))

@@ -1,6 +1,6 @@
 ######### Basic Settings #########
 basic:
-    device: '3'
+    device: '1'
     seed: [1993] # icarl 官方代码给的种子是 1993
 
     # Dataset Choises: cifar100, cifar100, imagenet100, imagenet1000, tinyimagenet,
@@ -24,8 +24,8 @@ basic:
 
     ######### Exampler Hyperparameters #########
     memory_size: 2000
-    fixed_memory: false
-    sampling_method: random # icarl, random, closest_to_mean 
+    fixed_memory: true
+    sampling_method: icarl # icarl, random, closest_to_mean 
 
     ######### Task Settings, unimportant in Joint #########
     # for some datasets(e.g. MedMNist), this will be ignored

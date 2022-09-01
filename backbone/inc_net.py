@@ -9,7 +9,7 @@ from backbone.ucir_cifar_resnet import resnet32 as cosine_resnet32
 from backbone.ucir_resnet import resnet18 as cosine_resnet18
 from backbone.ucir_resnet import resnet34 as cosine_resnet34
 from backbone.ucir_resnet import resnet50 as cosine_resnet50
-from backbone.linears import SimpleLinear, SplitCosineLinear, CosineLinear
+from backbone.linears import SplitCosineLinear, CosineLinear
 from backbone.cifar_resnet_cbam import resnet18_cbam as resnet18_cbam
 from typing import Callable
 
@@ -57,13 +57,17 @@ class IncrementalNet(nn.Module):
         super(IncrementalNet, self).__init__()
         self.feature_extractor = get_backbone(backbone_type, pretrained, pretrain_path)
         if 'resnet' in backbone_type:
-            self.feature_dim = self.feature_extractor.fc.in_features
+            self._feature_dim = self.feature_extractor.fc.in_features
         else:
             raise ValueError('{} did not support yet!'.format(backbone_type))
         self.feature_extractor.fc = nn.Sequential()
         self.fc = None
         self.fc_til = None
         self.output_features = {'features': torch.empty(0)}
+
+    @property
+    def feature_dim(self):
+        return self._feature_dim
 
     def extract_vector(self, x):
         features = self.feature_extractor(x)
@@ -82,7 +86,7 @@ class IncrementalNet(nn.Module):
         return out, self.output_features
 
     def update_fc(self, nb_classes):
-        fc = nn.Linear(self.feature_dim, nb_classes)
+        fc = self.generate_fc(self.feature_dim, nb_classes)
         if self.fc is not None:
             nb_output = self.fc.out_features
             weight = copy.deepcopy(self.fc.weight.data)
@@ -98,7 +102,10 @@ class IncrementalNet(nn.Module):
     def update_til_fc(self, nb_classes):
         if self.fc_til == None:
             self.fc_til = nn.ModuleList([])
-        self.fc_til.append(nn.Linear(self.feature_dim, nb_classes))
+        self.fc_til.append(self.generate_fc(self.feature_dim, nb_classes))
+
+    def generate_fc(self, in_dim, out_dim):
+        return nn.Linear(in_dim, out_dim)
 
     def copy(self):
         return copy.deepcopy(self)
@@ -107,8 +114,8 @@ class IncrementalNet(nn.Module):
         for param in self.parameters():
             param.requires_grad = False
         self.eval()
-
         return self
+    
 
 class IncrementalNet_fm(IncrementalNet):
     '''IncrementalNet returns feature map from specific layers'''
@@ -221,7 +228,6 @@ class CosineIncrementalNet(IncrementalNet):
             prev_out_features = self.fc.out_features // self.nb_proxy
             # prev_out_features = self.fc.out_features
             fc = SplitCosineLinear(in_dim, prev_out_features, out_dim - prev_out_features, self.nb_proxy)
-
         return fc
 
 

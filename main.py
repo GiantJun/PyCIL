@@ -5,7 +5,8 @@ import os
 import torch
 import logging
 from utils.data_manager import DataManager
-from utils import factory
+# from utils import factory
+import methods
 
 
 def set_random(seed):
@@ -27,9 +28,9 @@ if __name__ == '__main__':
             temp_config.seed = seed
             set_random(seed)
             data_manager = DataManager(temp_config.dataset, temp_config.shuffle, temp_config.seed, temp_config.init_cls, temp_config.increment)
-            temp_config.update({'total_class_num':data_manager.total_classes})
+            temp_config.update({'total_class_num':data_manager.total_classes, 'task_num':data_manager.nb_tasks})
             temp_config.print_config()
-            trainer = factory.get_trainer(temp_config, tblog)
+            trainer = methods.get_trainer(temp_config, tblog)
 
             # for task in range(data_manager.nb_tasks):
             while trainer.cur_taskID < data_manager.nb_tasks - 1:
