@@ -285,7 +285,7 @@ class IncrementalNetWithBias(IncrementalNet):
         self.bias_layers.append(BiasLayer())
 
     def generate_fc(self, in_dim, out_dim):
-        fc = SimpleLinear(in_dim, out_dim)
+        fc = nn.Linear(in_dim, out_dim)
 
         return fc
 
@@ -366,7 +366,7 @@ class DERNet(nn.Module):
         self.aux_fc=self.generate_fc(self.out_dim,new_task_size+1)
 
     def generate_fc(self, in_dim, out_dim):
-        fc = SimpleLinear(in_dim, out_dim)
+        fc = nn.Linear(in_dim, out_dim)
 
         return fc
 

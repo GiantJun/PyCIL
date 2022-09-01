@@ -1,4 +1,5 @@
 import importlib
+import logging
 from os.path import join, exists
 from pyexpat import model
 from methods.base import BaseLearner
@@ -21,4 +22,5 @@ def get_trainer(config, tblog) -> BaseLearner:
     if model is None:
         raise ValueError('Method class {} do not exist!'.format(method_name))
     
+    logging.info('Trainer {} created!'.format(method_name))
     return model(config, tblog)

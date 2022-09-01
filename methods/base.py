@@ -15,6 +15,12 @@ from torch.nn.functional import cross_entropy
 
 EPSILON = 1e-8
 
+'''
+新方法命名规则: 
+python文件(方法名小写) 
+类名(方法名中词语字母大写)
+'''
+
 # base is finetune with or without memory_bank
 class BaseLearner(object):
     def __init__(self, config, tblog):
