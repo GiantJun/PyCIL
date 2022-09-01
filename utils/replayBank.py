@@ -21,7 +21,7 @@ class ReplayBank:
         self._fixed_memory = config.fixed_memory
         if self._fixed_memory:
             if config.memory_per_class == None:
-                raise ValueError('if apply fix memory, memory_per_class should not be None !')
+                raise ValueError('if apply fixed memory, memory_per_class should not be None !')
             else:
                 self._memory_per_class = config.memory_per_class
         self._sampling_method = config.sampling_method # 采样的方式

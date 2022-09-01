@@ -166,7 +166,7 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
         self.feature = nn.AvgPool2d(4, stride=1)
         self.out_dim = 512 * block.expansion
-        # self.fc = nn.Linear(512 * block.expansion, num_classes)
+        self.fc = nn.Linear(512 * block.expansion, num_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -206,10 +206,11 @@ class ResNet(nn.Module):
         pool = nn.AvgPool2d(dim, stride=1)
         pooled = pool(x_4)
         features = pooled.view(x.size(0), -1)
-        return {
-            'fmaps': [x_1, x_2, x_3, x_4],
-            'features': features
-        }
+        # return {
+        #     'fmaps': [x_1, x_2, x_3, x_4],
+        #     'features': features
+        # }
+        return self.fc(features)
 
     def is_fc(self, name):
         if "fc" in name:

@@ -146,11 +146,11 @@ class CifarResNet(nn.Module):
         pooled = self.avgpool(x_3)  # [bs, 64, 1, 1]
         features = pooled.view(pooled.size(0), -1)  # [bs, 64]
 
-        return {
-            'fmaps': [x_1, x_2, x_3],
-            'features': features
-        }
-        # return self.fc(features)
+        # return {
+        #     'fmaps': [x_1, x_2, x_3],
+        #     'features': features
+        # }
+        return self.fc(features)
 
     @property
     def last_conv(self):

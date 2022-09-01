@@ -14,33 +14,25 @@ from backbone.cifar_resnet_cbam import resnet18_cbam as resnet18_cbam
 from typing import Callable
 
 
-def get_backbone(convnet_type, pretrained=False, pretrain_path=None, normed=False):
-    name = convnet_type.lower()
+def get_backbone(backbone_type, pretrained=False, pretrain_path=None, normed=False) -> nn.Module:
+    name = backbone_type.lower()
     net = None
     if name in torch_models.__dict__.keys():
         net = torch_models.__dict__[name](pretrained=pretrained)
-        # if 'resnet' in name:
-        #     net.fc = nn.Sequential()
     elif name == 'resnet32':
         net = resnet32()
-        # net.fc = nn.Sequential()
     elif name == 'cosine_resnet18':
         net = cosine_resnet18(pretrained=pretrained)
-        # net.fc = nn.Sequential()
     elif name == 'cosine_resnet32':
         net = cosine_resnet32()
-        # net.fc = nn.Sequential()
     elif name == 'cosine_resnet34':
         net = cosine_resnet34(pretrained=pretrained)
-        # net.fc = nn.Sequential()
     elif name == 'cosine_resnet50':
         net = cosine_resnet50(pretrained=pretrained)
-        # net.fc = nn.Sequential()
     elif name == 'resnet18_cbam':
         net = resnet18_cbam(normed=normed)
-        # net.fc = nn.Sequential()
     else:
-        raise NotImplementedError('Unknown type {}'.format(convnet_type))
+        raise NotImplementedError('Unknown type {}'.format(backbone_type))
     logging.info('Created {} !'.format(name))
 
     # 载入自定义预训练模型
@@ -58,53 +50,55 @@ def get_backbone(convnet_type, pretrained=False, pretrain_path=None, normed=Fals
 
     return net
 
-class BaseNet(nn.Module):
 
-    def __init__(self, convnet_type, pretrained, pretrain_path=None):
-    # def __init__(self, convnet_type, pretrained, pretrain_path=None, layer_names: Iterable[str]=['layer1','layer2','layer3','layer4']):
-        super(BaseNet, self).__init__()
-        self.convnet = get_backbone(convnet_type, pretrained, pretrain_path)
+class IncrementalNet(nn.Module):
+
+    def __init__(self, backbone_type, pretrained, pretrain_path=None):
+        super(IncrementalNet, self).__init__()
+        self.feature_extractor = get_backbone(backbone_type, pretrained, pretrain_path)
+        if 'resnet' in backbone_type:
+            self.feature_dim = self.feature_extractor.fc.in_features
+        else:
+            raise ValueError('{} did not support yet!'.format(backbone_type))
+        self.feature_extractor.fc = nn.Sequential()
         self.fc = None
         self.fc_til = None
-        # self.layer_names = layer_names
-        # self.features = {layer: torch.empty(0) for layer in layer_names}
-
-        # model_dict = dict([*self.convnet.named_modules()]) 
-        # for layer_id in layer_names:
-        #     layer = model_dict[layer_id]
-        #     layer.register_forward_hook(self.save_features(layer_id))
-    
-    # def save_features(self, layer_id: str) -> Callable:
-    #     def func(module, input, output):
-    #         self.features[layer_id] = output
-    #     return func
-
-    @property
-    def feature_dim(self):
-        return self.convnet.out_dim
+        self.output_features = {'features': torch.empty(0)}
 
     def extract_vector(self, x):
-        return self.convnet(x)['features']
+        features = self.feature_extractor(x)
+        return features
 
     def forward(self, x):
-        x = self.convnet(x)
-        out = self.fc(x['features'])
-        '''
-        {
-            'fmaps': [x_1, x_2, ..., x_n],
-            'features': features
-            'logits': logits
-        }
-        '''
-        out.update(x)
-
-        return out
+        features = self.feature_extractor(x)
+        out = self.fc(features)
+        self.output_features['features'] = features
+        return out, self.output_features
+    
+    def forward_til(self, x, task_id):
+        features = self.feature_extractor(x)
+        out = self.fc_til[task_id](features)
+        self.output_features['features'] = features
+        return out, self.output_features
 
     def update_fc(self, nb_classes):
-        pass
+        fc = nn.Linear(self.feature_dim, nb_classes)
+        if self.fc is not None:
+            nb_output = self.fc.out_features
+            weight = copy.deepcopy(self.fc.weight.data)
+            bias = copy.deepcopy(self.fc.bias.data)
+            fc.weight.data[:nb_output] = weight
+            fc.bias.data[:nb_output] = bias
+            logging.info('Updated classifier head output dim from {} to {}'.format(nb_output, nb_classes))
+        else:
+            logging.info('Created classifier head with output dim {}'.format(nb_classes))
+        del self.fc
+        self.fc = fc
 
-    def generate_fc(self, in_dim, out_dim):
-        pass
+    def update_til_fc(self, nb_classes):
+        if self.fc_til == None:
+            self.fc_til = nn.ModuleList([])
+        self.fc_til.append(nn.Linear(self.feature_dim, nb_classes))
 
     def copy(self):
         return copy.deepcopy(self)
@@ -116,98 +110,90 @@ class BaseNet(nn.Module):
 
         return self
 
+class IncrementalNet_fm(IncrementalNet):
+    '''IncrementalNet returns feature map from specific layers'''
 
-class IncrementalNet(BaseNet):
+    def __init__(self, backbone_type, pretrained, pretrain_path=None, layer_names: Iterable[str]=[]):
+        '''
+        layers_name can be ['layer1','layer2','layer3','layer4']
+        '''
+        super(IncrementalNet_fm, self).__init__(backbone_type, pretrained, pretrain_path)
+        self.layer_names = layer_names
+        self.output_features = {layer: torch.empty(0) for layer in layer_names}
 
-    def __init__(self, convnet_type, pretrained, pretrain_path=None, gradcam=False):
-        super(IncrementalNet, self).__init__(convnet_type, pretrained, pretrain_path)
-        self.gradcam = gradcam
-        # self._features = 
-        if hasattr(self, 'gradcam') and self.gradcam:
-            self._gradcam_hooks = [None, None]
-            self.set_gradcam_hook()        
+        model_dict = dict([*self.feature_extractor.named_modules()]) 
+        for layer_id in layer_names:
+            layer = model_dict[layer_id]
+            layer.register_forward_hook(self.save_output_features(layer_id))
     
-    @property
-    def feature_dim(self):
-        return self.convnet.out_dim
+    def save_output_features(self, layer_id: str) -> Callable:
+        def hook(module, input, output):
+            self.output_features[layer_id] = output
+        return hook
 
-    def update_fc(self, nb_classes):
-        fc = self.generate_fc(self.feature_dim, nb_classes)
-        if self.fc is not None:
-            nb_output = self.fc.out_features
-            weight = copy.deepcopy(self.fc.weight.data)
-            bias = copy.deepcopy(self.fc.bias.data)
-            fc.weight.data[:nb_output] = weight
-            fc.bias.data[:nb_output] = bias
-            logging.info('Updated classifier head output dim from {} to {}'.format(nb_output, nb_classes))
-        else:
-            logging.info('Created classifier head with output dim {}'.format(nb_classes))
 
-        del self.fc
-        self.fc = fc
+# class IncrementalNet(BaseNet):
+
+#     def __init__(self, convnet_type, pretrained, pretrain_path=None, gradcam=False):
+#         super(IncrementalNet, self).__init__(convnet_type, pretrained, pretrain_path)
+#         self.gradcam = gradcam
+#         if hasattr(self, 'gradcam') and self.gradcam:
+#             self._gradcam_hooks = [None, None]
+#             self.set_gradcam_hook()
+
+#     def weight_align(self, increment):
+#         weights=self.fc.weight.data
+#         newnorm=(torch.norm(weights[-increment:,:],p=2,dim=1))
+#         oldnorm=(torch.norm(weights[:-increment,:],p=2,dim=1))
+#         meannew=torch.mean(newnorm)
+#         meanold=torch.mean(oldnorm)
+#         gamma=meanold/meannew
+#         print('alignweights,gamma=',gamma)
+#         self.fc.weight.data[-increment:,:]*=gamma
+
+#     def forward(self, x):
+#         x = self.convnet(x)
+#         out = self.fc(x['features'])
+#         out.update(x)
+#         if hasattr(self, 'gradcam') and self.gradcam:
+#             out['gradcam_gradients'] = self._gradcam_gradients
+#             out['gradcam_activations'] = self._gradcam_activations
+
+#         return out
     
-    def update_til_fc(self, nb_classes):
-        if self.fc_til == None:
-            self.fc_til = nn.ModuleList([])
-        self.fc_til.append(self.generate_fc(self.feature_dim, nb_classes))
+#     def forward_til(self, x, task_id):
+#         x = self.convnet(x)
+#         out = self.fc_til[task_id](x['features'])
+#         out.update(x)
+#         if hasattr(self, 'gradcam') and self.gradcam:
+#             out['gradcam_gradients'] = self._gradcam_gradients
+#             out['gradcam_activations'] = self._gradcam_activations
 
-    def weight_align(self, increment):
-        weights=self.fc.weight.data
-        newnorm=(torch.norm(weights[-increment:,:],p=2,dim=1))
-        oldnorm=(torch.norm(weights[:-increment,:],p=2,dim=1))
-        meannew=torch.mean(newnorm)
-        meanold=torch.mean(oldnorm)
-        gamma=meanold/meannew
-        print('alignweights,gamma=',gamma)
-        self.fc.weight.data[-increment:,:]*=gamma
+#         return out
 
-    def generate_fc(self, in_dim, out_dim):
-        fc = SimpleLinear(in_dim, out_dim)
-        return fc
+#     def unset_gradcam_hook(self):
+#         self._gradcam_hooks[0].remove()
+#         self._gradcam_hooks[1].remove()
+#         self._gradcam_hooks[0] = None
+#         self._gradcam_hooks[1] = None
+#         self._gradcam_gradients, self._gradcam_activations = [None], [None]
 
-    def forward(self, x):
-        x = self.convnet(x)
-        out = self.fc(x['features'])
-        out.update(x)
-        if hasattr(self, 'gradcam') and self.gradcam:
-            out['gradcam_gradients'] = self._gradcam_gradients
-            out['gradcam_activations'] = self._gradcam_activations
+#     def set_gradcam_hook(self):
+#         self._gradcam_gradients, self._gradcam_activations = [None], [None]
 
-        return out
-    
-    def forward_til(self, x, task_id):
-        x = self.convnet(x)
-        out = self.fc_til[task_id](x['features'])
-        out.update(x)
-        if hasattr(self, 'gradcam') and self.gradcam:
-            out['gradcam_gradients'] = self._gradcam_gradients
-            out['gradcam_activations'] = self._gradcam_activations
+#         def backward_hook(module, grad_input, grad_output):
+#             self._gradcam_gradients[0] = grad_output[0]
+#             return None
 
-        return out
+#         def forward_hook(module, input, output):
+#             self._gradcam_activations[0] = output
+#             return None
 
-    def unset_gradcam_hook(self):
-        self._gradcam_hooks[0].remove()
-        self._gradcam_hooks[1].remove()
-        self._gradcam_hooks[0] = None
-        self._gradcam_hooks[1] = None
-        self._gradcam_gradients, self._gradcam_activations = [None], [None]
-
-    def set_gradcam_hook(self):
-        self._gradcam_gradients, self._gradcam_activations = [None], [None]
-
-        def backward_hook(module, grad_input, grad_output):
-            self._gradcam_gradients[0] = grad_output[0]
-            return None
-
-        def forward_hook(module, input, output):
-            self._gradcam_activations[0] = output
-            return None
-
-        self._gradcam_hooks[0] = self.convnet.last_conv.register_backward_hook(backward_hook)
-        self._gradcam_hooks[1] = self.convnet.last_conv.register_forward_hook(forward_hook)
+#         self._gradcam_hooks[0] = self.convnet.last_conv.register_backward_hook(backward_hook)
+#         self._gradcam_hooks[1] = self.convnet.last_conv.register_forward_hook(forward_hook)
 
 
-class CosineIncrementalNet(BaseNet):
+class CosineIncrementalNet(IncrementalNet):
 
     def __init__(self, convnet_type, pretrained, nb_proxy=1):
         super().__init__(convnet_type, pretrained)
@@ -254,7 +240,7 @@ class BiasLayer(nn.Module):
         return (self.alpha.item(), self.beta.item())
 
 
-class IncrementalNetWithBias(BaseNet):
+class IncrementalNetWithBias(IncrementalNet):
     def __init__(self, convnet_type, pretrained, bias_correction=False):
         super().__init__(convnet_type, pretrained)
 
@@ -401,7 +387,7 @@ class DERNet(nn.Module):
         print('alignweights,gamma=',gamma)
         self.fc.weight.data[-increment:,:]*=gamma
 
-class SimpleCosineIncrementalNet(BaseNet):
+class SimpleCosineIncrementalNet(IncrementalNet):
     
     def __init__(self, convnet_type, pretrained):
         super().__init__(convnet_type, pretrained)

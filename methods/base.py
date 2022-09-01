@@ -144,11 +144,11 @@ class BaseLearner(object):
             inputs, targets = inputs.cuda(), targets.cuda()
 
             if self._incre_type == 'cil':
-                logits = model(inputs)['logits']
+                logits, feature_outputs = model(inputs)
                 loss = cross_entropy(logits, targets)
                 preds = torch.max(logits, dim=1)[1]
             elif self._incre_type == 'til':
-                logits = model.forward_til(inputs, self._cur_task)['logits']
+                logits, feature_outputs = model.forward_til(inputs, self._cur_task)
                 loss = cross_entropy(logits, targets - self._known_classes)
                 preds = torch.max(logits, dim=1)[1] + self._known_classes
     
@@ -172,15 +172,15 @@ class BaseLearner(object):
         for _, inputs, targets in test_loader:
             inputs, targets = inputs.cuda(), targets.cuda()
             if self._incre_type == 'cil':
-                outputs = model(inputs)
-                cnn_preds = torch.max(outputs['logits'], dim=1)[1]
+                outputs, feature_outputs = model(inputs)
+                cnn_preds = torch.max(outputs, dim=1)[1]
             elif self._incre_type == 'til':
-                outputs = model.forward_til(inputs, self._cur_task)
-                cnn_preds = torch.max(outputs['logits'], dim=1)[1] + self._known_classes
+                outputs, feature_outputs = model.forward_til(inputs, self._cur_task)
+                cnn_preds = torch.max(outputs, dim=1)[1] + self._known_classes
                 
             if ret_pred_target:
                 if self._memory_bank != None and self._apply_nme:
-                    nme_pred = self._memory_bank.KNN_classify(outputs['features'])
+                    nme_pred = self._memory_bank.KNN_classify(feature_outputs['features'])
                     nme_pred_all.append(tensor2numpy(nme_pred))
                 cnn_pred_all.append(tensor2numpy(cnn_preds))
                 target_all.append(tensor2numpy(targets))
@@ -299,23 +299,7 @@ class BaseLearner(object):
             cnn_pred_result = np.concatenate(cnn_pred_result)
             y_true_result = np.concatenate(y_true_result)
 
-        return cnn_pred_result, nme_pred_result, y_true_result
-
-    def _extract_vectors(self, model, loader):
-        model.eval()
-        vectors, targets = [], []
-        for _, _inputs, _targets in loader:
-            _targets = _targets.numpy()
-            if isinstance(model, nn.DataParallel):
-                _vectors = tensor2numpy(model.module.extract_vector(_inputs.cuda()))
-            else:
-                _vectors = tensor2numpy(model.extract_vector(_inputs.cuda()))
-
-            vectors.append(_vectors)
-            targets.append(_targets)
-
-        return np.concatenate(vectors), np.concatenate(targets)
-    
+        return cnn_pred_result, nme_pred_result, y_true_result  
 
     def _get_optimizer(self, params, config, is_init):
         optimizer = None
