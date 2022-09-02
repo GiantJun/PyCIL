@@ -1,1 +1,1 @@
-This project is moved to https://github.com/GiantJun/IL_Framework.git
+This project is moved to IL_Framework
