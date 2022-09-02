@@ -9,7 +9,7 @@ basic:
     shuffle: true
 
     # Method Choises: icarl, end2end, dr, ucir, bic, lwm, podnet, mas, joint， finetune
-    method: cnnprompt_joint
+    method: cnn_prompt_joint
     incre_type: cil
     # eval_metric Choises: acc, recall
     eval_metric: acc

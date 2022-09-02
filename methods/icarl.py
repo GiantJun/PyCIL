@@ -1,10 +1,7 @@
-import logging
 import numpy as np
-from tqdm import tqdm
 import torch
-from torch.nn import functional as F
 from methods.base import BaseLearner
-from utils.toolkit import target2onehot, tensor2numpy
+from utils.toolkit import tensor2numpy
 from torch.nn.functional import cross_entropy
 
 EPSILON = 1e-8
@@ -31,7 +28,7 @@ class iCaRL(BaseLearner):
         model.train()
         for _, inputs, targets in train_loader:
             inputs, targets = inputs.cuda(), targets.cuda()
-            logits = model(inputs)['logits']
+            logits, feature_outputs = model(inputs)
             
             loss_clf = cross_entropy(logits, targets)
             losses_clf += loss_clf.item()

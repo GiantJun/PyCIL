@@ -1,8 +1,7 @@
 ######### Basic Settings #########
 basic:
-    device: '1'
+    device: '6'
     seed: [1993] # icarl 官方代码给的种子是 1993
-    num_workers: 4
 
     # Dataset Choises: cifar100, cifar100, imagenet100, imagenet1000, tinyimagenet,
     # skin7, sd198(also known as skin40), mymedmnist
@@ -23,7 +22,7 @@ basic:
     ######### Exampler Hyperparameters #########
     memory_size: 2000
     fixed_memory: false
-    sampling_method: icarl # icarl, random, closest_to_mean 
+    sampling_method: random # icarl, random, closest_to_mean 
 
     apply_nme: true
 
